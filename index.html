@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GymControl</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <!--  Splash instantáneo con CSS puro -->
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #0B0F1A;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+
+      #initial-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        overflow: hidden;
+      }
+
+      #initial-splash.hidden {
+        display: none;
+      }
+
+      /* Gym background photo */
+      .splash-bg {
+        position: absolute;
+        inset: 0;
+        background-image: url('/gym-bg.jpg');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+
+      .splash-bg::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 15, 26, 0.85) 0%,
+          rgba(11, 15, 26, 0.80) 50%,
+          rgba(11, 15, 26, 0.95) 100%
+        );
+      }
+
+      .splash-content {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        animation: slideUp 0.6s ease-out;
+      }
+
+      .splash-logo {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 2rem;
+        border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.08);
+        filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.5));
+        animation: logoFloat 0.8s ease-out;
+      }
+
+      .splash-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: white;
+        margin-bottom: 0.25rem;
+        letter-spacing: -0.02em;
+      }
+
+      .splash-subtitle {
+        font-size: 1rem;
+        color: rgba(156, 163, 175, 0.7);
+        font-weight: 300;
+        margin-bottom: 2rem;
+      }
+
+      .splash-brand {
+        padding-top: 2rem;
+        opacity: 0;
+        animation: fadeInDelay 0.8s ease-out 0.4s forwards;
+      }
+
+      .splash-powered {
+        font-size: 0.7rem;
+        color: rgba(107, 114, 128, 0.6);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        font-weight: 500;
+      }
+
+      .splash-company {
+        font-size: 1.25rem;
+        color: rgba(249, 115, 22, 0.8);
+        font-weight: 600;
+        margin-top: 0.25rem;
+      }
+
+      .splash-tagline {
+        font-size: 0.7rem;
+        color: rgba(75, 85, 99, 0.6);
+        font-style: italic;
+        margin-top: 0.25rem;
+      }
+
+      .splash-loading {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 2rem;
+        opacity: 0;
+        animation: fadeInDelay 0.8s ease-out 0.6s forwards;
+      }
+
+      .splash-dot {
+        width: 6px;
+        height: 6px;
+        background: rgba(249, 115, 22, 0.7);
+        border-radius: 50%;
+        animation: bounce 1.4s ease-in-out infinite;
+      }
+
+      .splash-dot:nth-child(2) { animation-delay: 0.2s; }
+      .splash-dot:nth-child(3) { animation-delay: 0.4s; }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes fadeInDelay {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes logoFloat {
+        from { opacity: 0; transform: scale(0.95) translateY(12px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+
+      @keyframes bounce {
+        0%, 100% { opacity: 0.3; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(-6px); }
+      }
+    </style>
+  </head>
+  <body>
+    <!--  Splash instantáneo (se ve ANTES de React) -->
+    <div id="initial-splash">
+      <div class="splash-bg"></div>
+      <div class="splash-content">
+        <img src="/logo-ym-transparent.png" alt="YM Solutions" class="splash-logo" />
+        
+        <h1 class="splash-title">GymControl</h1>
+        <p class="splash-subtitle">Sistema de Gestión de Gimnasios</p>
+        
+        <div class="splash-brand">
+          <p class="splash-powered">Powered by</p>
+          <p class="splash-company">YM Solutions</p>
+          <p class="splash-tagline">Más orden. más clientes. más ganancias.</p>
+        </div>
+
+        <div class="splash-loading">
+          <div class="splash-dot"></div>
+          <div class="splash-dot"></div>
+          <div class="splash-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- React montará aquí -->
+    <div id="root"></div>
+    
+    <script type="module" src="/src/main.jsx"></script>
+    
+    <!--  Ocultar splash HTML cuando React esté listo -->
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const splash = document.getElementById('initial-splash')
+          if (splash) {
+            splash.classList.add('hidden')
+          }
+        }, 100)
+      })
+    </script>
+  </body>
+</html>
