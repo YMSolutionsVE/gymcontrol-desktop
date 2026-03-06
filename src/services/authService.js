@@ -9,17 +9,33 @@ export const loginWithEmail = async (email, password) => {
 
     if (error) throw error
 
-    const { data: roleData } = await supabase
+    // Cargar perfil con gym_id
+    const { data: perfil, error: perfilError } = await supabase
       .from('usuarios_roles')
       .select('*')
       .eq('user_id', data.user.id)
+      .eq('activo', true)
       .single()
+
+    if (perfilError) throw perfilError
+
+    // Cargar gimnasio si tiene gym_id
+    let gimnasio = null
+    if (perfil.gym_id) {
+      const { data: gymData } = await supabase
+        .from('gimnasios')
+        .select('*')
+        .eq('id', perfil.gym_id)
+        .single()
+      gimnasio = gymData
+    }
 
     return {
       success: true,
       user: data.user,
       session: data.session,
-      role: roleData || { rol: 'sin_rol' }
+      role: perfil || { rol: 'sin_rol' },
+      gym: gimnasio
     }
   } catch (error) {
     return {
@@ -45,6 +61,7 @@ export const getUserRole = async (userId) => {
       .from('usuarios_roles')
       .select('*')
       .eq('user_id', userId)
+      .eq('activo', true)
       .single()
 
     if (error && error.code !== 'PGRST116') throw error

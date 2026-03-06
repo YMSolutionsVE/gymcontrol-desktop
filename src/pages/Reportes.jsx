@@ -12,7 +12,6 @@ import { exportarCierreCajaPDF } from '../services/exportService'
 import { exportarCierresPeriodoPDF } from '../services/exportPeriodosService'
 import { exportarCierresPorPeriodoCSV } from '../services/exportPeriodosCSVService'
 
-// ── Helpers ────────────────────────────────────────
 const hoyStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
 
 const calcRango = (id) => {
@@ -40,42 +39,39 @@ const calcRangoAnterior = (desde, hasta) => {
 }
 
 const PERIODOS = [
-  { id: 'hoy',  label: 'Hoy' },
-  { id: '7d',   label: '7 días' },
-  { id: '30d',  label: '30 días' },
-  { id: '90d',  label: '3 meses' },
-  { id: '1a',   label: '1 año' },
+  { id: 'hoy',    label: 'Hoy' },
+  { id: '7d',     label: '7 días' },
+  { id: '30d',    label: '30 días' },
+  { id: '90d',    label: '3 meses' },
+  { id: '1a',     label: '1 año' },
   { id: 'custom', label: 'Personalizado' },
 ]
 
 const formatPeriodoLabel = (id, desde, hasta) => {
   switch (id) {
-    case 'hoy':  return `Hoy — ${hasta}`
-    case '7d':   return `Últimos 7 días`
-    case '30d':  return `Últimos 30 días`
-    case '90d':  return `Últimos 3 meses`
-    case '1a':   return `Último año`
-    case 'custom': return `${desde} → ${hasta}`
+    case 'hoy':    return 'Hoy — ' + hasta
+    case '7d':     return 'Últimos 7 días'
+    case '30d':    return 'Últimos 30 días'
+    case '90d':    return 'Últimos 3 meses'
+    case '1a':     return 'Último año'
+    case 'custom': return desde + ' → ' + hasta
     default: return ''
   }
 }
 
 export default function Reportes() {
-  const { user } = useAuth()
+  const { user, gymId, gymNombre } = useAuth()
 
-  // ── Period filter state ──
   const [periodoActivo, setPeriodoActivo] = useState('7d')
   const initRango = calcRango('7d')
   const [desde, setDesde] = useState(initRango.desde)
   const [hasta, setHasta] = useState(initRango.hasta)
 
-  // ── Comparison toggle ──
   const [compararPeriodo, setCompararPeriodo] = useState(false)
   const [metricasAnteriores, setMetricasAnteriores] = useState(null)
   const [datosIngresosAnt, setDatosIngresosAnt] = useState([])
   const [datosAsistenciasAnt, setDatosAsistenciasAnt] = useState([])
 
-  // ── Data state ──
   const [actividad, setActividad] = useState([])
   const [loading, setLoading] = useState(false)
   const [mostrarCierre, setMostrarCierre] = useState(false)
@@ -90,35 +86,42 @@ export default function Reportes() {
 
   const [periodoExportacion, setPeriodoExportacion] = useState('semana')
 
-  // ── Data loading ──
   const cargarTodo = useCallback(async (d, h) => {
+    if (!gymId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    const [res, ing, asi, met] = await Promise.all([
-      getResumenDiario(d, h),
-      getIngresosPorRango(d, h),
-      getAsistenciasPorRango(d, h),
-      getMetricasResumen(d, h),
-    ])
-    if (res.success) setActividad(res.data)
-    if (ing.success) setDatosIngresos(ing.data)
-    if (asi.success) setDatosAsistencias(asi.data)
-    if (met.success) setMetricas(met.data)
-    setLoading(false)
-  }, [])
+    try {
+      const [res, ing, asi, met] = await Promise.all([
+        getResumenDiario(d, h, gymId),
+        getIngresosPorRango(d, h, gymId),
+        getAsistenciasPorRango(d, h, gymId),
+        getMetricasResumen(d, h, gymId),
+      ])
+      if (res.success) setActividad(res.data)
+      if (ing.success) setDatosIngresos(ing.data)
+      if (asi.success) setDatosAsistencias(asi.data)
+      if (met.success) setMetricas(met.data)
+    } catch (err) {
+      console.error('Reportes.jsx: error inesperado en cargarTodo:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [gymId])
 
   const cargarComparacion = useCallback(async (d, h) => {
     const prev = calcRangoAnterior(d, h)
     const [ing, asi, met] = await Promise.all([
-      getIngresosPorRango(prev.desde, prev.hasta),
-      getAsistenciasPorRango(prev.desde, prev.hasta),
-      getMetricasResumen(prev.desde, prev.hasta),
+      getIngresosPorRango(prev.desde, prev.hasta, gymId),
+      getAsistenciasPorRango(prev.desde, prev.hasta, gymId),
+      getMetricasResumen(prev.desde, prev.hasta, gymId),
     ])
     if (ing.success) setDatosIngresosAnt(ing.data)
     if (asi.success) setDatosAsistenciasAnt(asi.data)
     if (met.success) setMetricasAnteriores(met.data)
-  }, [])
+  }, [gymId])
 
-  // ── Effects ──
   useEffect(() => {
     cargarTodo(desde, hasta)
   }, [desde, hasta, cargarTodo])
@@ -133,7 +136,6 @@ export default function Reportes() {
     }
   }, [compararPeriodo, desde, hasta, cargarComparacion])
 
-  // ── Period selection ──
   const handlePeriodo = (id) => {
     setPeriodoActivo(id)
     if (id !== 'custom') {
@@ -145,16 +147,15 @@ export default function Reportes() {
   const handleCustomDesde = (e) => { setDesde(e.target.value); setPeriodoActivo('custom') }
   const handleCustomHasta = (e) => { setHasta(e.target.value); setPeriodoActivo('custom') }
 
-  // ── Cierre ──
   const abrirCierreHoy = async () => {
-    const data = await obtenerResumenHoy()
+    const data = await obtenerResumenHoy(gymId)
     if (!data) return
     setResumenHoy(data); setCierreConsultado(null); setMostrarCierre(true)
   }
 
   const confirmarCierre = async () => {
     setCerrando(true)
-    const res = await cerrarDia(user.id, resumenHoy)
+    const res = await cerrarDia(user.id, resumenHoy, gymId)
     if (res.success) {
       setMensaje({ text: 'Cierre guardado correctamente', type: 'success' })
       setMostrarCierre(false)
@@ -167,36 +168,36 @@ export default function Reportes() {
   }
 
   const consultarCierre = async (fecha) => {
-    const res = await obtenerCierrePorFecha(fecha)
+    const res = await obtenerCierrePorFecha(fecha, gymId)
     if (res.success) { setCierreConsultado(res.data); setResumenHoy(null); setMostrarCierre(true) }
   }
 
   const cierre = resumenHoy || cierreConsultado
   const esCierreNuevo = !!resumenHoy && !cierreConsultado
 
-  // ── Exports ──
   const periodoExport = [
     { id: 'semana', label: 'Semana' }, { id: 'mes', label: 'Mes' },
     { id: '3m', label: '3 meses' }, { id: '6m', label: '6 meses' }, { id: '1a', label: '1 año' }
   ]
 
-  const calcularRangoPeriodo = () => {
-    const h = new Date(); let d; const hasta = h.toISOString().split('T')[0]
-    switch (periodoExportacion) {
-      case 'semana': { const s = new Date(); s.setDate(h.getDate()-6); d = s.toISOString().split('T')[0]; break }
-      case 'mes': d = new Date(h.getFullYear(), h.getMonth(), 1).toISOString().split('T')[0]; break
-      case '3m': { const m = new Date(); m.setMonth(h.getMonth()-3); d = m.toISOString().split('T')[0]; break }
-      case '6m': { const m = new Date(); m.setMonth(h.getMonth()-6); d = m.toISOString().split('T')[0]; break }
-      case '1a': { const y = new Date(); y.setFullYear(h.getFullYear()-1); d = y.toISOString().split('T')[0]; break }
-      default: return null
+  const exportarPeriodoPDF = async () => {
+    try {
+      await exportarCierresPeriodoPDF(periodoExportacion, gymId, gymNombre)
+    } catch (err) {
+      setMensaje({ text: err.message || 'Error al exportar PDF', type: 'error' })
+      setTimeout(() => setMensaje(null), 4000)
     }
-    return { desde: d, hasta }
   }
 
-  const exportarPeriodoPDF = () => { const r = calcularRangoPeriodo(); if(r) exportarCierresPeriodoPDF(r.desde, r.hasta, `cierres_${periodoExportacion}`) }
-  const exportarPeriodoCSV = () => { const r = calcularRangoPeriodo(); if(r) exportarCierresPorPeriodoCSV(r.desde, r.hasta, `cierres_${periodoExportacion}`) }
+  const exportarPeriodoCSV = async () => {
+    try {
+      await exportarCierresPorPeriodoCSV(periodoExportacion, gymId, gymNombre)
+    } catch (err) {
+      setMensaje({ text: err.message || 'Error al exportar XLSX', type: 'error' })
+      setTimeout(() => setMensaje(null), 4000)
+    }
+  }
 
-  // ── Variation calc ──
   const calcVariation = (current, previous) => {
     if (!previous || previous === 0) return null
     return ((current - previous) / previous * 100).toFixed(1)
@@ -221,10 +222,9 @@ export default function Reportes() {
         </button>
       </div>
 
-      {/* ═══ PERIOD FILTER BAR ═══ */}
+      {/* Period filter */}
       <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-4 mb-6">
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Period tabs */}
           <div className="flex gap-1.5">
             {PERIODOS.map(p => (
               <button
@@ -241,7 +241,6 @@ export default function Reportes() {
             ))}
           </div>
 
-          {/* Custom date inputs */}
           {periodoActivo === 'custom' && (
             <>
               <div className="h-6 w-px bg-white/[0.06]" />
@@ -265,7 +264,6 @@ export default function Reportes() {
 
           <div className="h-6 w-px bg-white/[0.06]" />
 
-          {/* Compare toggle */}
           <button
             onClick={() => setCompararPeriodo(!compararPeriodo)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -280,14 +278,12 @@ export default function Reportes() {
             Comparar período anterior
           </button>
 
-          {/* Period label */}
           <span className="text-gray-500 text-[11px] ml-auto tabular-nums">
             {formatPeriodoLabel(periodoActivo, desde, hasta)}
           </span>
         </div>
       </div>
 
-      {/* Message */}
       {mensaje && (
         <div className={`px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-2 ${
           mensaje.type === 'error' ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
@@ -296,7 +292,6 @@ export default function Reportes() {
         </div>
       )}
 
-      {/* ═══ METRICS WITH PERIOD CONTEXT ═══ */}
       <MetricasResumen
         totalUSD={metricas.totalUSD}
         totalBS={metricas.totalBS}
@@ -307,7 +302,6 @@ export default function Reportes() {
         variacionAsistencias={compararPeriodo && metricasAnteriores ? calcVariation(metricas.totalAsistencias, metricasAnteriores.totalAsistencias) : null}
       />
 
-      {/* ═══ CHARTS WITH COMPARISON ═══ */}
       <div className="mb-8 space-y-4">
         <GraficoIngresos
           datos={datosIngresos}
@@ -354,7 +348,7 @@ export default function Reportes() {
         </div>
       </div>
 
-      {/* Export section */}
+      {/* Export */}
       <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-5">
         <h3 className="text-white font-semibold text-sm mb-4">Exportar reportes</h3>
         <div className="flex items-center gap-3 flex-wrap">
@@ -385,19 +379,18 @@ export default function Reportes() {
         </div>
       </div>
 
-      {/* ===== CIERRE MODAL ===== */}
+      {/* Cierre modal */}
       {mostrarCierre && cierre && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#111827] border border-white/[0.08] w-full max-w-5xl rounded-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            {/* Modal header */}
             <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-white">Cierre del día</h2>
-                <p className="text-gray-500 text-xs mt-0.5">{cierre.fecha || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })}</p>
+                <p className="text-gray-500 text-xs mt-0.5">{cierre.fecha || hoyStr()}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => exportarCierreCajaPDF(cierre, cierre.fecha)}
+                  onClick={() => exportarCierreCajaPDF(cierre, cierre.fecha, gymNombre)}
                   className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
@@ -412,19 +405,17 @@ export default function Reportes() {
               </div>
             </div>
 
-            {/* Modal body */}
             <div className="p-6 overflow-y-auto flex-1">
-              {/* Totals */}
               <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
                   <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 to-emerald-600 rounded-l-xl" />
                   <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total USD</p>
-                  <p className="text-emerald-400 font-bold text-2xl pl-2 tabular-nums">${Number(cierre.total_usd || cierre.totalUSD || 0).toFixed(2)}</p>
+                  <p className="text-emerald-400 font-bold text-2xl pl-2 tabular-nums">{'$' + Number(cierre.total_usd || cierre.totalUSD || 0).toFixed(2)}</p>
                 </div>
                 <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
                   <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-green-500 to-green-600 rounded-l-xl" />
                   <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total Bs</p>
-                  <p className="text-green-400 font-bold text-2xl pl-2 tabular-nums">Bs {Number(cierre.total_bs || cierre.totalBS || 0).toFixed(2)}</p>
+                  <p className="text-green-400 font-bold text-2xl pl-2 tabular-nums">{'Bs ' + Number(cierre.total_bs || cierre.totalBS || 0).toFixed(2)}</p>
                 </div>
                 <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
                   <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-blue-500 to-blue-600 rounded-l-xl" />
@@ -433,7 +424,6 @@ export default function Reportes() {
                 </div>
               </div>
 
-              {/* Payment methods */}
               {cierre.detalle_metodos && Object.keys(cierre.detalle_metodos).length > 0 && (
                 <div className="mb-6">
                   <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Desglose por método</p>
@@ -441,14 +431,13 @@ export default function Reportes() {
                     {Object.entries(cierre.detalle_metodos).map(([m, v]) => (
                       <div key={m} className="bg-[#0D1117] border border-white/[0.06] rounded-lg px-4 py-3">
                         <p className="text-gray-400 text-xs capitalize mb-1">{m.replace('_', ' ')}</p>
-                        <p className="text-emerald-400 font-bold tabular-nums">Bs {Number(v).toFixed(2)}</p>
+                        <p className="text-emerald-400 font-bold tabular-nums">{'Bs ' + Number(v).toFixed(2)}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Payment details */}
               {cierre.detalle_pagos && cierre.detalle_pagos.length > 0 && (
                 <div>
                   <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Detalle de pagos</p>
@@ -461,8 +450,8 @@ export default function Reportes() {
                         <span className="truncate">{p.socios?.nombre}</span>
                         <span className="text-gray-400">{p.socios?.cedula}</span>
                         <span className="capitalize text-gray-400">{p.metodo.replace('_', ' ')}</span>
-                        <span className="tabular-nums">${Number(p.monto_usd || 0).toFixed(2)}</span>
-                        <span className="tabular-nums">Bs {Number(p.monto_bs || 0).toFixed(2)}</span>
+                        <span className="tabular-nums">{'$' + Number(p.monto_usd || 0).toFixed(2)}</span>
+                        <span className="tabular-nums">{'Bs ' + Number(p.monto_bs || 0).toFixed(2)}</span>
                         <span className="text-gray-500">{p.referencia || '—'}</span>
                       </div>
                     ))}
@@ -471,7 +460,6 @@ export default function Reportes() {
               )}
             </div>
 
-            {/* Modal footer */}
             <div className="px-6 py-4 border-t border-white/[0.06] flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setMostrarCierre(false)}

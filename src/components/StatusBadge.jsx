@@ -1,6 +1,28 @@
-import React from 'react'
+export default function StatusBadge({ fechaVencimiento, sesionesTotal, sesionesRestantes }) {
+  // Plan por sesiones
+  if (sesionesTotal !== null && sesionesTotal !== undefined) {
+    if (!sesionesRestantes || sesionesRestantes <= 0) {
+      return (
+        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">
+          Agotado
+        </span>
+      )
+    }
+    if (sesionesRestantes <= 2) {
+      return (
+        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">
+          Pocas sesiones
+        </span>
+      )
+    }
+    return (
+      <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">
+        Al día
+      </span>
+    )
+  }
 
-export default function StatusBadge({ fechaVencimiento }) {
+  // Plan por días
   if (!fechaVencimiento) {
     return (
       <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">

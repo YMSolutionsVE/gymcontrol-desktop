@@ -18,7 +18,7 @@ const formatFecha = (fecha) => {
   return new Date(fecha).toISOString().split('T')[0]
 }
 
-export const exportarCierreCajaPDF = async (cierre, fecha) => {
+export const exportarCierreCajaPDF = async (cierre, fecha, nombreGimnasio = 'GymControl') => {
   if (!cierre) return
 
   const doc = new jsPDF('p', 'mm', 'a4')
@@ -35,17 +35,22 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
   const pagos = cierre.detalle_pagos || []
 
   // ===== HEADER =====
-  doc.setFontSize(16)
-  doc.text('Reporte de Cierre de Caja', 14, 20)
+  doc.setFontSize(18)
+  doc.setFont('helvetica', 'bold')
+  doc.text(nombreGimnasio.toUpperCase(), 14, 16)
 
-  doc.setFontSize(10)
-  doc.text(`ID Reporte: ${idReporte}`, 14, 28)
-  doc.text(`Fecha auditada: ${fechaAuditada}`, 14, 34)
-  doc.text(`Generado: ${generado}`, 14, 40)
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'normal')
+  doc.text('Reporte de Cierre de Caja', 14, 23)
+
+  doc.setFontSize(9)
+  doc.text(`ID Reporte: ${idReporte}`, 14, 30)
+  doc.text(`Fecha auditada: ${fechaAuditada}`, 14, 36)
+  doc.text(`Generado: ${generado}`, 14, 42)
 
   // ===== RESUMEN =====
   autoTable(doc, {
-    startY: 48,
+    startY: 50,
     head: [['Concepto', 'Valor']],
     body: [
       ['Total USD', `$ ${totalUSD.toFixed(2)}`],
@@ -53,11 +58,7 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
       ['Asistencias', asistencias]
     ],
     styles: { fontSize: 10 },
-    headStyles: {
-      fillColor: [40, 130, 180],
-      textColor: 255,
-      fontStyle: 'bold'
-    }
+    headStyles: { fillColor: [40, 130, 180], textColor: 255, fontStyle: 'bold' }
   })
 
   // ===== DESGLOSE POR MÉTODO =====
@@ -72,15 +73,8 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
       head: [['Método de pago', 'Monto Bs']],
       body: metodosRows,
       styles: { fontSize: 10 },
-      headStyles: {
-        fillColor: [40, 130, 180],
-        textColor: 255,
-        fontStyle: 'bold',
-        halign: 'right'
-      },
-      columnStyles: {
-        1: { halign: 'right' }
-      }
+      headStyles: { fillColor: [40, 130, 180], textColor: 255, fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' } }
     })
   }
 
@@ -88,14 +82,7 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
   if (pagos.length) {
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 10,
-      head: [[
-        'Socio',
-        'Cédula',
-        'Método',
-        'USD',
-        'Bs',
-        'Referencia'
-      ]],
+      head: [['Socio', 'Cédula', 'Método', 'USD', 'Bs', 'Referencia']],
       body: pagos.map(p => [
         p.socios?.nombre || '-',
         p.socios?.cedula || '-',
@@ -104,15 +91,8 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
         Number(p.monto_bs || 0).toFixed(2),
         p.referencia || '-'
       ]),
-      styles: {
-        fontSize: 9,
-        cellPadding: 3
-      },
-      headStyles: {
-        fillColor: [40, 130, 180],
-        textColor: 255,
-        fontStyle: 'bold'
-      },
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [40, 130, 180], textColor: 255, fontStyle: 'bold' },
       columnStyles: {
         0: { cellWidth: 30, halign: 'left' },
         1: { cellWidth: 30, halign: 'left' },
@@ -130,12 +110,13 @@ export const exportarCierreCajaPDF = async (cierre, fecha) => {
     doc.setPage(i)
     doc.setFontSize(8)
     doc.text(
-      `Documento generado automáticamente · Página ${i} de ${totalPages}`,
+      `${nombreGimnasio} · Documento generado automáticamente · Página ${i} de ${totalPages}`,
       pageWidth / 2,
       290,
       { align: 'center' }
     )
   }
 
-  doc.save(`cierre_${fechaAuditada}.pdf`)
+  const nombreSlug = nombreGimnasio.toLowerCase().replace(/\s+/g, '_')
+  doc.save(`${nombreSlug}_cierre_${fechaAuditada}.pdf`)
 }

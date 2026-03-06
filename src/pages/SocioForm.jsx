@@ -1,27 +1,22 @@
 import React, { useState, useEffect } from 'react'
-
-function obtenerFechaHoyLocal() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
-}
-
-function calcularFechaVencimiento(plan) {
-  const fechaLocal = obtenerFechaHoyLocal()
-
-  if (plan === 'diario') {
-    return fechaLocal
-  }
-
-  // Mensual y cortesía: sin fecha al registrar.
-  // La fecha de vencimiento se calcula al momento de registrar el pago real.
-  return ''
-}
+import { useAuth } from '../context/AuthContext'
+import { useConfig } from '../hooks/useConfig'
+import { usePlanes } from '../hooks/usePlanes'
 
 export default function SocioForm({ socio, onSave, onCancel }) {
+  const { gymId } = useAuth()
+  const { config } = useConfig()
+  const { planes, loading: planesLoading } = usePlanes(gymId)
+
+  const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
+
   const [form, setForm] = useState({
     nombre: '', cedula: '', telefono: '',
-    plan_actual: 'mensual', fecha_vencimiento: '',
+    plan_actual: '', plan_id: null,
+    fecha_vencimiento: '',
     es_cortesia: false, nota_cortesia: ''
   })
+  const [selectedPlan, setSelectedPlan] = useState(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const isEditing = !!socio
@@ -29,32 +24,62 @@ export default function SocioForm({ socio, onSave, onCancel }) {
   useEffect(() => {
     if (socio) {
       setForm({
-        nombre: socio.nombre || '', cedula: socio.cedula || '',
-        telefono: socio.telefono || '', plan_actual: socio.plan_actual || 'mensual',
+        nombre: socio.nombre || '',
+        cedula: socio.cedula || '',
+        telefono: socio.telefono || '',
+        plan_actual: socio.plan_actual || '',
+        plan_id: socio.plan_id || null,
         fecha_vencimiento: socio.fecha_vencimiento || '',
-        es_cortesia: socio.es_cortesia || false, nota_cortesia: socio.nota_cortesia || ''
+        es_cortesia: socio.es_cortesia || false,
+        nota_cortesia: socio.nota_cortesia || ''
       })
-    } else {
-      // Nuevo socio: auto-calcular fecha de vencimiento
-      setForm(prev => ({
-        ...prev,
-        fecha_vencimiento: calcularFechaVencimiento(prev.plan_actual)
-      }))
+      if (socio.plan_id && planes.length > 0) {
+        const found = planes.find(p => p.id === socio.plan_id)
+        if (found) setSelectedPlan(found)
+      }
     }
-  }, [socio])
+  }, [socio, planes])
 
   const handleChange = (field, value) => {
-    setForm(prev => {
-      const updated = { ...prev, [field]: value }
-
-      // Si cambia el plan en registro nuevo, recalcular fecha
-      if (field === 'plan_actual' && !isEditing) {
-        updated.fecha_vencimiento = calcularFechaVencimiento(value)
-      }
-
-      return updated
-    })
+    setForm(prev => ({ ...prev, [field]: value }))
     setError('')
+  }
+
+  const handlePlanSelect = (planId) => {
+    if (planId === 'cortesia') {
+      setSelectedPlan(null)
+      setForm(prev => ({
+        ...prev,
+        plan_id: null,
+        plan_actual: 'cortesia',
+        es_cortesia: true,
+        fecha_vencimiento: ''
+      }))
+      return
+    }
+
+    const plan = planes.find(p => p.id === planId)
+    if (!plan) {
+      setSelectedPlan(null)
+      setForm(prev => ({
+        ...prev,
+        plan_id: null,
+        plan_actual: '',
+        es_cortesia: false,
+        fecha_vencimiento: ''
+      }))
+      return
+    }
+
+    setSelectedPlan(plan)
+    setForm(prev => ({
+      ...prev,
+      plan_id: plan.id,
+      plan_actual: plan.nombre,
+      es_cortesia: false,
+      nota_cortesia: '',
+      fecha_vencimiento: isEditing ? prev.fecha_vencimiento : ''
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -62,6 +87,7 @@ export default function SocioForm({ socio, onSave, onCancel }) {
     setError('')
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
     if (!form.cedula.trim()) return setError('La cédula es obligatoria')
+    if (!form.plan_id && !form.es_cortesia) return setError('Selecciona un plan')
     if (form.es_cortesia && !form.nota_cortesia.trim()) return setError('La cortesía requiere una nota explicativa')
     setSaving(true)
     try {
@@ -76,6 +102,8 @@ export default function SocioForm({ socio, onSave, onCancel }) {
   const inputClass = `w-full px-4 py-3 bg-[#0D1117] border border-white/[0.08] rounded-xl text-white 
     placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40
     disabled:opacity-50 transition-all duration-200 text-sm`
+
+  const selectValue = form.es_cortesia ? 'cortesia' : (form.plan_id || '')
 
   return (
     <div className="bg-[#111827] rounded-2xl border border-white/[0.06] overflow-hidden">
@@ -104,171 +132,114 @@ export default function SocioForm({ socio, onSave, onCancel }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Personal data section */}
+          {/* Datos personales */}
           <div>
-            <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">
-              Datos personales
-            </p>
+            <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Datos personales</p>
             <div className="space-y-3">
               <div>
                 <label className="block text-gray-400 text-xs font-medium mb-1.5">Nombre completo</label>
-                <input
-                  type="text" value={form.nombre}
-                  onChange={(e) => handleChange('nombre', e.target.value)}
-                  placeholder="Nombre del miembro"
-                  className={inputClass} disabled={saving}
-                />
+                <input type="text" value={form.nombre} onChange={(e) => handleChange('nombre', e.target.value)} placeholder="Nombre del miembro" className={inputClass} disabled={saving} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Cedula</label>
-                  <input
-                    type="text" value={form.cedula}
-                    onChange={(e) => handleChange('cedula', e.target.value)}
-                    placeholder="V-12345678"
-                    className={inputClass} disabled={saving || isEditing}
-                  />
+                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Cédula</label>
+                  <input type="text" value={form.cedula} onChange={(e) => handleChange('cedula', e.target.value)} placeholder="V-12345678" className={inputClass} disabled={saving || isEditing} />
                   {isEditing && <p className="text-gray-600 text-[10px] mt-1">No se puede modificar</p>}
                 </div>
                 <div>
-                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Telefono</label>
-                  <input
-                    type="text" value={form.telefono}
-                    onChange={(e) => handleChange('telefono', e.target.value)}
-                    placeholder="0412-1234567"
-                    className={inputClass} disabled={saving}
-                  />
+                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Teléfono</label>
+                  <input type="text" value={form.telefono} onChange={(e) => handleChange('telefono', e.target.value)} placeholder="0412-1234567" className={inputClass} disabled={saving} />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Plan section */}
+          {/* Plan */}
           <div>
-            <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">
-              Plan y membresia
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-400 text-xs font-medium mb-1.5">Plan</label>
-                <select
-                  value={form.plan_actual}
-                  onChange={(e) => handleChange('plan_actual', e.target.value)}
-                  className={inputClass} disabled={saving}
-                >
-                  <option value="diario">Diario</option>
-                  <option value="mensual">Mensual</option>
-                  <option value="cortesia">Cortesia</option>
+            <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Plan y membresía</p>
+            <div>
+              <label className="block text-gray-400 text-xs font-medium mb-1.5">Plan</label>
+              {planesLoading ? (
+                <div className="flex items-center gap-2 py-3 px-4 rounded-xl" style={{ background: '#0D1117', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="w-3.5 h-3.5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="text-gray-500 text-sm">Cargando planes...</span>
+                </div>
+              ) : planes.length === 0 ? (
+                <div className="py-3 px-4 rounded-xl text-sm" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+                  No hay planes configurados. Ve a Configuración → Planes.
+                </div>
+              ) : (
+                <select value={selectValue} onChange={(e) => handlePlanSelect(e.target.value)} className={inputClass} disabled={saving}>
+                  <option value="">— Seleccionar plan —</option>
+                  {planes.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} — ${parseFloat(p.precio_usd).toFixed(2)} ({p.tipo === 'sesiones' ? `${p.cantidad_sesiones} sesiones` : `${p.duracion_dias} días`})
+                    </option>
+                  ))}
+                  <option disabled>──────────</option>
+                  <option value="cortesia">🎁 Cortesía</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-gray-400 text-xs font-medium mb-1.5">Fecha de vencimiento</label>
-                <input
-                  type="date" value={form.fecha_vencimiento}
-                  onChange={(e) => handleChange('fecha_vencimiento', e.target.value)}
-                  className={inputClass} disabled={saving}
-                />
+              )}
 
-                {/* Botones rápidos solo para nuevo socio */}
-                {!isEditing && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-gray-500 text-[10px]">Rápido:</span>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => handleChange('fecha_vencimiento', obtenerFechaHoyLocal())}
-                      className="px-2.5 py-1 text-[10px] font-medium rounded-lg border border-white/[0.08] bg-white/[0.03] text-gray-400 hover:bg-blue-500/10 hover:text-blue-400 hover:border-blue-500/20 transition-all"
-                    >
-                      Hoy
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => {
-                        const fecha = new Date(obtenerFechaHoyLocal() + 'T12:00:00')
-                        fecha.setMonth(fecha.getMonth() + 1)
-                        handleChange('fecha_vencimiento', fecha.toISOString().split('T')[0])
-                      }}
-                      className="px-2.5 py-1 text-[10px] font-medium rounded-lg border border-white/[0.08] bg-white/[0.03] text-gray-400 hover:bg-blue-500/10 hover:text-blue-400 hover:border-blue-500/20 transition-all"
-                    >
-                      +1 Mes
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => handleChange('fecha_vencimiento', '')}
-                      className="px-2.5 py-1 text-[10px] font-medium rounded-lg border border-white/[0.08] bg-white/[0.03] text-gray-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all"
-                    >
-                      Limpiar
-                    </button>
+              {selectedPlan && !form.es_cortesia && (
+                <div className="mt-3 rounded-xl p-3 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.12)' }}>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{selectedPlan.nombre}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {selectedPlan.tipo === 'sesiones' ? `${selectedPlan.cantidad_sesiones} sesiones` : `${selectedPlan.duracion_dias} días`}
+                      {selectedPlan.descripcion && ` · ${selectedPlan.descripcion}`}
+                    </p>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold" style={{ color: '#34d399' }}>${parseFloat(selectedPlan.precio_usd).toFixed(2)}</p>
+                    {tasaBcv > 0 && <p className="text-[11px] text-gray-600">Bs. {(parseFloat(selectedPlan.precio_usd) * tasaBcv).toFixed(2)}</p>}
+                  </div>
+                </div>
+              )}
 
-          {/* Cortesía toggle */}
-          <div>
-            <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">
-              Opciones
-            </p>
-            <div className="flex items-center justify-between bg-[#0D1117] rounded-xl border border-white/[0.08] px-4 py-3">
-              <div>
-                <p className="text-gray-300 text-sm font-medium">Cortesia</p>
-                <p className="text-gray-500 text-xs">Membresia gratuita o de prueba</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleChange('es_cortesia', !form.es_cortesia)}
-                disabled={saving}
-                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-                  form.es_cortesia ? 'bg-blue-500' : 'bg-gray-600'
-                }`}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                  form.es_cortesia ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
+              {!isEditing && selectedPlan && !form.es_cortesia && (
+                <div className="mt-2 rounded-lg px-3 py-2" style={{ background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.1)' }}>
+                  {selectedPlan.tipo === 'sesiones' ? (
+                    <p className="text-[11px] text-blue-400/70">{selectedPlan.cantidad_sesiones} sesiones incluidas. Se descuenta 1 por cada asistencia registrada.</p>
+                  ) : (
+                    <p className="text-[11px] text-blue-400/70">La fecha de vencimiento se calculará automáticamente al registrar el primer pago.</p>
+                  )}
+                </div>
+              )}
             </div>
 
-            {form.es_cortesia && (
+            {isEditing && selectedPlan?.tipo !== 'sesiones' && (
               <div className="mt-3">
-                <label className="block text-gray-400 text-xs font-medium mb-1.5">Nota de cortesia</label>
-                <textarea
-                  value={form.nota_cortesia}
-                  onChange={(e) => handleChange('nota_cortesia', e.target.value)}
-                  rows={2}
-                  placeholder="Razon de la cortesia..."
-                  className={`${inputClass} resize-none`} disabled={saving}
-                />
+                <label className="block text-gray-400 text-xs font-medium mb-1.5">Fecha de vencimiento</label>
+                <input type="date" value={form.fecha_vencimiento} onChange={(e) => handleChange('fecha_vencimiento', e.target.value)} className={inputClass} disabled={saving} />
               </div>
             )}
           </div>
 
+          {/* Cortesía */}
+          {form.es_cortesia && (
+            <div>
+              <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Cortesía</p>
+              <div className="rounded-xl border px-4 py-3 mb-3" style={{ background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.12)' }}>
+                <p className="text-blue-400 text-xs font-medium">Membresía gratuita o de prueba</p>
+              </div>
+              <label className="block text-gray-400 text-xs font-medium mb-1.5">Nota de cortesía (requerida)</label>
+              <textarea value={form.nota_cortesia} onChange={(e) => handleChange('nota_cortesia', e.target.value)} rows={2} placeholder="Razón de la cortesía..." className={`${inputClass} resize-none`} disabled={saving} />
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <button
-              type="submit" disabled={saving}
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2"
-            >
+            <button type="submit" disabled={saving || (planes.length === 0 && !planesLoading && !form.es_cortesia)}
+              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2">
               {saving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Guardando...
-                </>
+                <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Guardando...</>
               ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  {isEditing ? 'Guardar cambios' : 'Registrar miembro'}
-                </>
+                <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> {isEditing ? 'Guardar cambios' : 'Registrar miembro'}</>
               )}
             </button>
-            <button
-              type="button" onClick={onCancel} disabled={saving}
-              className="px-6 py-3 bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 border border-white/[0.08] rounded-xl transition-all duration-200 text-sm font-medium"
-            >
+            <button type="button" onClick={onCancel} disabled={saving}
+              className="px-6 py-3 bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 border border-white/[0.08] rounded-xl transition-all duration-200 text-sm font-medium">
               Cancelar
             </button>
           </div>

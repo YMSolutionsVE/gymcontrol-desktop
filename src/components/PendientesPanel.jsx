@@ -186,7 +186,7 @@ function ConfirmarPagoModal({ pendiente, config, onConfirm, onCancel }) {
 // Panel de Pendientes (Redesigned)
 // ============================================
 export default function PendientesPanel() {
-  const { user } = useAuth()
+  const { user, gymId } = useAuth()
   const [pendientes, setPendientes] = useState([])
   const [config, setConfig] = useState({ tasaBcv: 40, precioDiario: 1.50, precioMensual: 25 })
   const [loading, setLoading] = useState(true)
@@ -194,13 +194,14 @@ export default function PendientesPanel() {
   const [pendienteConfirmando, setPendienteConfirmando] = useState(null)
   const [filtro, setFiltro] = useState('hoy')
 
-  useEffect(() => { cargarDatos() }, [filtro])
+  useEffect(() => { if (gymId) cargarDatos() }, [filtro, gymId])
 
   const cargarDatos = async () => {
+    if (!gymId) return
     setLoading(true)
     const [pendientesResult, configResult] = await Promise.all([
-      filtro === 'hoy' ? getPendientesHoy() : getPendientesSinConfirmar(),
-      obtenerConfiguracion()
+      filtro === 'hoy' ? getPendientesHoy(gymId) : getPendientesSinConfirmar(gymId),
+      obtenerConfiguracion(gymId)
     ])
     if (pendientesResult.success) setPendientes(pendientesResult.data)
     if (configResult.success) setConfig(configResult.data)
@@ -208,7 +209,7 @@ export default function PendientesPanel() {
   }
 
   const handleConfirmar = async (pendienteId, datos) => {
-    const result = await confirmarPagoPendiente(pendienteId, { ...datos, registradoPor: user?.id })
+    const result = await confirmarPagoPendiente(gymId, pendienteId, { ...datos, registradoPor: user?.id })
     if (result.success) {
       showMessage(`Pago confirmado: ${result.data.socioNombre}`, 'success')
       setPendienteConfirmando(null)

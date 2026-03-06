@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-export default function TasaBcvEditor({ tasaActual, onUpdate }) {
+export default function TasaBcvEditor({ tasaActual, onUpdate, compact = false }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -16,6 +16,7 @@ export default function TasaBcvEditor({ tasaActual, onUpdate }) {
     setEditing(false)
     setValue('')
     setError('')
+    setSaving(false)
   }
 
   const handleSave = async () => {
@@ -28,18 +29,83 @@ export default function TasaBcvEditor({ tasaActual, onUpdate }) {
     }
 
     setSaving(true)
-    const result = await onUpdate(value)
-
-    if (result.success) {
-      setEditing(false)
-      setValue('')
-    } else {
-      setError(result.error)
+    try {
+      const result = await onUpdate(value)
+      if (result?.success) {
+        setEditing(false)
+        setValue('')
+      } else {
+        setError(result?.error || 'Error al guardar')
+      }
+    } catch (e) {
+      setError('Error inesperado al guardar')
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
   }
 
+  // ── Modo compact (inline en el dashboard) ──────────────────────────────────
+  if (compact) {
+    if (!editing) {
+      return (
+        <button
+          onClick={handleEdit}
+          className="ml-1 bg-blue-600 hover:bg-blue-700 px-2 py-0.5 rounded text-white text-xs transition-colors"
+        >
+          Editar
+        </button>
+      )
+    }
+
+    return (
+      <div className="absolute top-full right-0 mt-2 z-50 bg-[#1a2235] border border-blue-500 rounded-xl p-4 w-64 shadow-2xl">
+        <p className="text-gray-300 text-sm mb-3 font-medium">Actualizar tasa BCV</p>
+
+        {error && (
+          <div className="bg-red-900/30 border border-red-500/50 text-red-300 px-3 py-2 rounded text-xs mb-3">
+            {error}
+          </div>
+        )}
+
+        <input
+          type="number"
+          step="0.01"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="36.45"
+          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-1"
+          disabled={saving}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave()
+            if (e.key === 'Escape') handleCancel()
+          }}
+        />
+        <p className="text-gray-500 text-xs mb-3">
+          Ejemplo: 36.45 (usa punto decimal, no coma)
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button
+            onClick={handleCancel}
+            disabled={saving}
+            className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white text-xs rounded-lg transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Modo normal (card completa) ─────────────────────────────────────────────
   if (!editing) {
     return (
       <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
@@ -80,6 +146,10 @@ export default function TasaBcvEditor({ tasaActual, onUpdate }) {
           className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           disabled={saving}
           autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave()
+            if (e.key === 'Escape') handleCancel()
+          }}
         />
         <p className="text-gray-500 text-xs mt-1">
           Ejemplo: 36.45 (usa punto decimal, no coma)
@@ -97,7 +167,7 @@ export default function TasaBcvEditor({ tasaActual, onUpdate }) {
         <button
           onClick={handleCancel}
           disabled={saving}
-          className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg transition-colors"
+          className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
         >
           Cancelar
         </button>

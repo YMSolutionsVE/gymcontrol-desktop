@@ -19,6 +19,11 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
     if (onVerMiembro) onVerMiembro(socio.id)
   }
 
+  const esPlanSesiones = socio.sesiones_total !== null && socio.sesiones_total !== undefined
+  let sesionesBadgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+  if (esPlanSesiones && socio.sesiones_restantes <= 0) sesionesBadgeClass = 'bg-red-500/10 text-red-400 border-red-500/20'
+  else if (esPlanSesiones && socio.sesiones_restantes <= 2) sesionesBadgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+
   return (
     <div
       onClick={irAlPerfil}
@@ -28,7 +33,13 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
         {/* Name + badges */}
         <div className="flex items-center gap-2.5 mb-1.5">
           <p className="text-white font-semibold text-[15px] truncate">{socio.nombre}</p>
-          <StatusBadge fechaVencimiento={socio.fecha_vencimiento} />
+          {esPlanSesiones ? (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${sesionesBadgeClass}`}>
+              {socio.sesiones_restantes <= 0 ? 'Sesiones agotadas' : `${socio.sesiones_restantes}/${socio.sesiones_total} ses.`}
+            </span>
+          ) : (
+            <StatusBadge fechaVencimiento={socio.fecha_vencimiento} />
+          )}
           {socio.es_cortesia && (
             <span className="bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">
               Cortesía
@@ -66,7 +77,13 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
           </svg>
           <span className="capitalize">{socio.plan_actual || 'Sin plan'}</span>
           <span className="text-gray-600">·</span>
-          <span>Vence: {socio.fecha_vencimiento || '—'}</span>
+          {socio.sesiones_total !== null && socio.sesiones_total !== undefined ? (
+            <span className={socio.sesiones_restantes <= 0 ? 'text-red-400/80' : socio.sesiones_restantes <= 2 ? 'text-amber-400/80' : ''}>
+              {socio.sesiones_restantes}/{socio.sesiones_total} sesiones
+            </span>
+          ) : (
+            <span>Vence: {socio.fecha_vencimiento || '—'}</span>
+          )}
         </div>
       </div>
 

@@ -1,13 +1,17 @@
 import { supabase } from '../config/supabase'
 
-export const getResumenDiario = async (desde, hasta) => {
+export const getResumenDiario = async (desde, hasta, gymId = null) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('cierres_caja')
       .select('fecha, total_usd, total_bs, asistencias')
       .gte('fecha', desde)
       .lte('fecha', hasta)
       .order('fecha', { ascending: true })
+
+    if (gymId) query = query.eq('gym_id', gymId)
+
+    const { data, error } = await query
 
     if (error) throw error
 

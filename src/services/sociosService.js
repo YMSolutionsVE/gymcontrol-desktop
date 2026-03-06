@@ -27,6 +27,17 @@ function sanitizeSocioData(data) {
   if (sanitized.cedula !== undefined) sanitized.cedula = sanitizeCedula(sanitized.cedula)
   if (sanitized.telefono !== undefined) sanitized.telefono = sanitizeTelefono(sanitized.telefono)
   if (sanitized.nota_cortesia !== undefined) sanitized.nota_cortesia = sanitizeText(sanitized.nota_cortesia)
+
+  // Convertir strings vacíos a null para campos date
+  if (sanitized.fecha_vencimiento === '' || sanitized.fecha_vencimiento === undefined) {
+    sanitized.fecha_vencimiento = null
+  }
+
+  // Convertir strings vacíos a null para campos opcionales
+  if (sanitized.telefono === '') sanitized.telefono = null
+  if (sanitized.nota_cortesia === '') sanitized.nota_cortesia = null
+  if (sanitized.plan_actual === '') sanitized.plan_actual = null
+
   return sanitized
 }
 
@@ -39,28 +50,33 @@ function sanitizeSearchTerm(str) {
     .replace(/\0/g, '')
 }
 
+// ── Validación gym_id ──
+
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('sociosService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
 // ── Servicios ──
 
-// Obtener todos los socios
-export const getSocios = async () => {
-  // Verificar conexión
+export const getSocios = async (gymId) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.', 
-      data: [] 
-    }
+    return { success: false, error: 'Sin conexión a Internet.', data: [] }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  }
   try {
     const { data, error } = await supabase
       .from('socios')
       .select('*')
+      .eq('gym_id', gymId)
       .eq('activo', true)
       .order('nombre', { ascending: true })
-
     if (error) throw error
-
     return { success: true, data: data || [] }
   } catch (error) {
     console.error('Error obteniendo socios:', error)
@@ -68,41 +84,42 @@ export const getSocios = async () => {
   }
 }
 
-// Obtener socios por estado (activo, vencido, por vencer)
-export const getSociosByEstado = async (estado) => {
-  // Verificar conexión
+export const getSociosByEstado = async (gymId, estado) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.', 
-      data: [] 
-    }
+    return { success: false, error: 'Sin conexión a Internet.', data: [] }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  }
   try {
     const { data, error } = await supabase
       .from('socios')
       .select('*')
+      .eq('gym_id', gymId)
       .eq('activo', true)
       .order('nombre', { ascending: true })
-
     if (error) throw error
 
-    // Filtrar por estado localmente
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
     const sociosFiltrados = (data || []).filter(socio => {
+      // Plan por sesiones
+      if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+        const restantes = socio.sesiones_restantes || 0
+        if (estado === 'activo' || estado === 'activos') return restantes > 2
+        if (estado === 'por_vencer') return restantes > 0 && restantes <= 2
+        if (estado === 'vencido' || estado === 'vencidos') return restantes <= 0
+        return false
+      }
+      // Plan por días
       if (!socio.fecha_vencimiento && estado === 'sin_plan') return true
       if (!socio.fecha_vencimiento) return false
-
       const vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
       const diasRestantes = Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24))
-
       if (estado === 'activo' || estado === 'activos') return diasRestantes > 3
       if (estado === 'por_vencer') return diasRestantes >= 0 && diasRestantes <= 3
       if (estado === 'vencido' || estado === 'vencidos') return diasRestantes < 0
-
       return false
     })
 
@@ -113,24 +130,21 @@ export const getSociosByEstado = async (estado) => {
   }
 }
 
-// Obtener socio por ID
-export const getSocioById = async (id) => {
+export const getSocioById = async (gymId, id) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.'
-    }
+    return { success: false, error: 'Sin conexión a Internet.' }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.' }
+  }
   try {
     const { data, error } = await supabase
       .from('socios')
       .select('*')
       .eq('id', id)
+      .eq('gym_id', gymId)
       .single()
-
     if (error) throw error
-
     return { success: true, data }
   } catch (error) {
     console.error('Error obteniendo socio:', error)
@@ -138,37 +152,30 @@ export const getSocioById = async (id) => {
   }
 }
 
-// Buscar socios por término (nombre o cédula)
-export const buscarSocios = async (termino) => {
+export const buscarSocios = async (gymId, termino) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.', 
-      data: [] 
-    }
+    return { success: false, error: 'Sin conexión a Internet.', data: [] }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  }
   try {
     if (!termino || termino.trim().length < 2) {
       return { success: true, data: [] }
     }
-
     const terminoLimpio = sanitizeSearchTerm(termino)
-
     if (!terminoLimpio || terminoLimpio.length < 2) {
       return { success: true, data: [] }
     }
-
     const { data, error } = await supabase
       .from('socios')
       .select('*')
+      .eq('gym_id', gymId)
       .eq('activo', true)
       .or(`nombre.ilike.%${terminoLimpio}%,cedula.ilike.%${terminoLimpio}%`)
       .order('nombre', { ascending: true })
       .limit(10)
-
     if (error) throw error
-
     return { success: true, data: data || [] }
   } catch (error) {
     console.error('Error buscando socios:', error)
@@ -176,40 +183,33 @@ export const buscarSocios = async (termino) => {
   }
 }
 
-// Crear nuevo socio
-export const createSocio = async (socioData) => {
+export const createSocio = async (gymId, socioData) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. No se puede registrar el socio sin conexión.' 
-    }
+    return { success: false, error: 'Sin conexión a Internet. No se puede registrar el socio.' }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.' }
+  }
   try {
     if (!socioData.nombre || !socioData.cedula) {
       return { success: false, error: 'Nombre y cédula son requeridos' }
     }
-
     const datosSanitizados = sanitizeSocioData(socioData)
-
     const { data: existente } = await supabase
       .from('socios')
       .select('id')
+      .eq('gym_id', gymId)
       .eq('cedula', datosSanitizados.cedula)
       .maybeSingle()
-
     if (existente) {
       return { success: false, error: 'Ya existe un socio con esta cédula' }
     }
-
     const { data, error } = await supabase
       .from('socios')
-      .insert([datosSanitizados])
+      .insert([{ ...datosSanitizados, gym_id: gymId }])
       .select()
       .single()
-
     if (error) throw error
-
     return { success: true, data }
   } catch (error) {
     console.error('Error registrando socio:', error)
@@ -217,32 +217,27 @@ export const createSocio = async (socioData) => {
   }
 }
 
-// Registrar nuevo socio (alias)
-export const registrarSocio = async (socioData) => {
-  return createSocio(socioData)
+export const registrarSocio = async (gymId, socioData) => {
+  return createSocio(gymId, socioData)
 }
 
-// Actualizar socio
-export const updateSocio = async (id, socioData) => {
+export const updateSocio = async (gymId, id, socioData) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. No se puede actualizar el socio sin conexión.' 
-    }
+    return { success: false, error: 'Sin conexión a Internet. No se puede actualizar el socio.' }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.' }
+  }
   try {
     const datosSanitizados = sanitizeSocioData(socioData)
-
     const { data, error } = await supabase
       .from('socios')
       .update(datosSanitizados)
       .eq('id', id)
+      .eq('gym_id', gymId)
       .select()
       .single()
-
     if (error) throw error
-
     return { success: true, data }
   } catch (error) {
     console.error('Error actualizando socio:', error)
@@ -250,30 +245,26 @@ export const updateSocio = async (id, socioData) => {
   }
 }
 
-// Alias de updateSocio
-export const actualizarSocio = async (id, socioData) => {
-  return updateSocio(id, socioData)
+export const actualizarSocio = async (gymId, id, socioData) => {
+  return updateSocio(gymId, id, socioData)
 }
 
-// Desactivar socio (soft delete)
-export const deactivateSocio = async (id) => {
+export const deactivateSocio = async (gymId, id) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. No se puede desactivar el socio sin conexión.' 
-    }
+    return { success: false, error: 'Sin conexión a Internet.' }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.' }
+  }
   try {
     const { data, error } = await supabase
       .from('socios')
       .update({ activo: false })
       .eq('id', id)
+      .eq('gym_id', gymId)
       .select()
       .single()
-
     if (error) throw error
-
     return { success: true, data }
   } catch (error) {
     console.error('Error desactivando socio:', error)
@@ -281,30 +272,25 @@ export const deactivateSocio = async (id) => {
   }
 }
 
-// Eliminar socio (alias de deactivateSocio)
-export const deleteSocio = async (id) => {
-  return deactivateSocio(id)
+export const deleteSocio = async (gymId, id) => {
+  return deactivateSocio(gymId, id)
 }
 
-// Obtener historial de pagos del socio
-export const getHistorialPagos = async (socioId) => {
+export const getHistorialPagos = async (gymId, socioId) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.', 
-      data: [] 
-    }
+    return { success: false, error: 'Sin conexión a Internet.', data: [] }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  }
   try {
     const { data, error } = await supabase
       .from('pagos')
       .select('*')
+      .eq('gym_id', gymId)
       .eq('socio_id', socioId)
       .order('fecha_pago', { ascending: false })
-
     if (error) throw error
-
     return { success: true, data: data || [] }
   } catch (error) {
     console.error('Error obteniendo historial de pagos:', error)
@@ -312,26 +298,22 @@ export const getHistorialPagos = async (socioId) => {
   }
 }
 
-// Obtener historial de asistencias del socio
-export const getHistorialAsistencias = async (socioId) => {
+export const getHistorialAsistencias = async (gymId, socioId) => {
   if (!navigator.onLine) {
-    return { 
-      success: false, 
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.', 
-      data: [] 
-    }
+    return { success: false, error: 'Sin conexión a Internet.', data: [] }
   }
-
+  if (!validarGymId(gymId)) {
+    return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  }
   try {
     const { data, error } = await supabase
       .from('asistencias')
       .select('*')
+      .eq('gym_id', gymId)
       .eq('socio_id', socioId)
       .order('fecha_hora', { ascending: false })
       .limit(50)
-
     if (error) throw error
-
     return { success: true, data: data || [] }
   } catch (error) {
     console.error('Error obteniendo historial de asistencias:', error)

@@ -1,14 +1,17 @@
 import { supabase } from '../config/supabase'
 
-// Obtener ingresos por rango de fechas (desde cierres_caja)
-export const getIngresosPorRango = async (fechaInicio, fechaFin) => {
+export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('cierres_caja')
       .select('fecha, total_usd, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
       .order('fecha', { ascending: true })
+
+    if (gymId) query = query.eq('gym_id', gymId)
+
+    const { data, error } = await query
 
     if (error) throw error
 
@@ -26,28 +29,29 @@ export const getIngresosPorRango = async (fechaInicio, fechaFin) => {
   }
 }
 
-// Obtener asistencias agrupadas por fecha
-export const getAsistenciasPorRango = async (fechaInicio, fechaFin) => {
+export const getAsistenciasPorRango = async (fechaInicio, fechaFin, gymId = null) => {
   try {
     const inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
     const fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('asistencias')
       .select('fecha_hora')
       .gte('fecha_hora', inicio)
       .lte('fecha_hora', fin)
 
+    if (gymId) query = query.eq('gym_id', gymId)
+
+    const { data, error } = await query
+
     if (error) throw error
 
-    // Agrupar por fecha (día completo)
     const agrupado = {}
     data.forEach(a => {
       const fecha = a.fecha_hora.split('T')[0]
       agrupado[fecha] = (agrupado[fecha] || 0) + 1
     })
 
-    // Convertir a array ordenado
     const resultado = Object.entries(agrupado).map(([fecha, cantidad]) => ({
       fecha,
       cantidad
@@ -60,40 +64,41 @@ export const getAsistenciasPorRango = async (fechaInicio, fechaFin) => {
   }
 }
 
-// Calcular métricas resumen para un rango
-export const getMetricasResumen = async (fechaInicio, fechaFin) => {
+export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) => {
   try {
-    // Ingresos totales del periodo
-    const { data: cierres, error: cierresError } = await supabase
+    let cierresQuery = supabase
       .from('cierres_caja')
       .select('total_usd, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
+
+    if (gymId) cierresQuery = cierresQuery.eq('gym_id', gymId)
+
+    const { data: cierres, error: cierresError } = await cierresQuery
 
     if (cierresError) throw cierresError
 
     const totalUSD = cierres.reduce((sum, c) => sum + Number(c.total_usd || 0), 0)
     const totalBS = cierres.reduce((sum, c) => sum + Number(c.total_bs || 0), 0)
 
-    // Asistencias totales del periodo
     const inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
     const fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    const { count, error: asistenciasError } = await supabase
+    let asistQuery = supabase
       .from('asistencias')
       .select('*', { count: 'exact', head: true })
       .gte('fecha_hora', inicio)
       .lte('fecha_hora', fin)
 
+    if (gymId) asistQuery = asistQuery.eq('gym_id', gymId)
+
+    const { count, error: asistenciasError } = await asistQuery
+
     if (asistenciasError) throw asistenciasError
 
     return {
       success: true,
-      data: {
-        totalUSD,
-        totalBS,
-        totalAsistencias: count || 0
-      }
+      data: { totalUSD, totalBS, totalAsistencias: count || 0 }
     }
   } catch (error) {
     console.error('Error obteniendo métricas:', error)

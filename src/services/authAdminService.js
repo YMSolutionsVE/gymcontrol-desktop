@@ -15,11 +15,12 @@ export const verifyAdminCredentials = async (email, password) => {
       .from('usuarios_roles')
       .select('rol')
       .eq('user_id', userId)
+      .eq('activo', true)
       .single()
 
     if (roleError) throw roleError
 
-    if (roleData.rol !== 'admin') {
+    if (roleData.rol !== 'admin' && roleData.rol !== 'superadmin') {
       return { success: false, error: 'El usuario no tiene permisos de administrador' }
     }
 
