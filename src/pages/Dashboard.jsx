@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getDashboardStats } from '../services/dashboardService'
 import { useConfig } from '../hooks/useConfig'
-import { useIsAdmin } from '../hooks/useIsAdmin'
 import { useAuth } from '../context/AuthContext'
 import StatCard from '../components/StatCard'
-import TasaBcvEditor from '../components/TasaBcvEditor'
 
 const getSaludo = () => {
   const hora = new Date().getHours()
@@ -24,8 +22,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const { config, updateTasa } = useConfig()
-  const { isAdmin } = useIsAdmin()
+  const { config } = useConfig()
   const { gymId } = useAuth()
 
   const loadStats = useCallback(async () => {
@@ -50,12 +47,6 @@ export default function Dashboard() {
   useEffect(() => {
     loadStats()
   }, [loadStats])
-
-  const handleUpdateTasa = async (nuevaTasa) => {
-    const result = await updateTasa(nuevaTasa)
-    if (result.success) loadStats()
-    return result
-  }
 
   if (loading) {
     return (
@@ -104,16 +95,24 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <div
-            className="relative flex items-center gap-2 rounded-xl px-4 py-2.5"
+            className="flex items-center gap-2.5 rounded-xl px-4 py-2.5"
             style={{
               background: 'linear-gradient(145deg, #0D1117, #111827)',
               border: '1px solid rgba(255,255,255,0.06)',
             }}
+            title="Se actualiza automáticamente 2 veces al día (L-V)"
           >
-            <span className="text-gray-500 text-xs">Tasa BCV</span>
-            <span className="text-blue-400 font-bold text-sm tabular-nums">Bs. {tasaBcv.toFixed(2)}</span>
-            {isAdmin && (
-              <TasaBcvEditor tasaActual={tasaBcv} onUpdate={handleUpdateTasa} compact />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+            </svg>
+            <span className="text-gray-500 text-xs font-medium">BCV</span>
+            {tasaBcv > 0 ? (
+              <span className="text-emerald-400 font-bold text-sm tabular-nums">
+                Bs. {tasaBcv.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-gray-600 text-sm">No configurada</span>
             )}
           </div>
           <button

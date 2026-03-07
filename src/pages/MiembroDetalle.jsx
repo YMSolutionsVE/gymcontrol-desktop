@@ -119,6 +119,9 @@ export default function MiembroDetalle({ socioId, onVolver }) {
     if (!socio.sesiones_restantes || socio.sesiones_restantes <= 0) {
       estado = 'Sesiones agotadas'
       estadoColor = { bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)', text: '#f87171' }
+    } else if (socio.sesiones_restantes <= 2) {
+      estado = `${socio.sesiones_restantes}/${socio.sesiones_total} · Por vencer`
+      estadoColor = { bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', text: '#fbbf24' }
     } else {
       estado = `${socio.sesiones_restantes}/${socio.sesiones_total} sesiones`
       estadoColor = { bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)', text: '#60a5fa' }

@@ -54,6 +54,9 @@ export const getDashboardStats = async (gymId = null) => {
       if (s.sesiones_total !== null && s.sesiones_total !== undefined) {
         if (!s.sesiones_restantes || s.sesiones_restantes <= 0) {
           vencidos++
+        } else if (s.sesiones_restantes <= 2) {
+          porVencer++
+          activos++
         } else {
           activos++
         }

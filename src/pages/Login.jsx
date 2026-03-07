@@ -727,7 +727,7 @@ export default function Login() {
             fontSize: 11,
             letterSpacing: '0.04em'
           }}>
-            GymControl v1.0 — YM Solutions
+            GymControl v2.0 — YM Solutions
           </p>
         </div>
       </div>
