@@ -3,6 +3,12 @@ import { useAuth } from '../context/AuthContext'
 import { useConfig } from '../hooks/useConfig'
 import { usePlanes } from '../hooks/usePlanes'
 import { createPlan, updatePlan, togglePlan, deletePlan } from '../services/planesService'
+import {
+  getInstructores, crearInstructor, desactivarInstructor,
+  getMiembrosInstructor, asignarMiembro, desasignarMiembro,
+  cambiarContrasenaInstructor,
+} from '../services/instructoresService'
+import { getSocios } from '../services/sociosService'
 import TasaBcvEditor from '../components/TasaBcvEditor'
 
 const IconPlus = () => (
@@ -38,6 +44,7 @@ const IconX = () => (
 
 const TABS = [
   { id: 'planes', label: 'Planes y Precios' },
+  { id: 'instructores', label: 'Instructores' },
   { id: 'general', label: 'General' },
   { id: 'modulos', label: 'Módulos' },
 ]
@@ -55,6 +62,20 @@ export default function Configuracion() {
   const [planForm, setPlanForm] = useState(emptyPlanForm)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
+
+  // ── Instructores ──
+  const [instructores, setInstructores] = useState([])
+  const [instructoresLoading, setInstructoresLoading] = useState(false)
+  const [showInstructorForm, setShowInstructorForm] = useState(false)
+  const [instructorForm, setInstructorForm] = useState({ nombre: '', email: '', password: '' })
+  const [savingInstructor, setSavingInstructor] = useState(false)
+  const [selectedInstructor, setSelectedInstructor] = useState(null)
+  const [miembrosInstructor, setMiembrosInstructor] = useState([])
+  const [todosLosSocios, setTodosLosSocios] = useState([])
+  const [showAsignar, setShowAsignar] = useState(false)
+  const [cambiarPassInstructor, setCambiarPassInstructor] = useState(null)
+  const [nuevaPassword, setNuevaPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
 
   const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
 
@@ -142,6 +163,80 @@ export default function Configuracion() {
     const result = await updateTasa(nuevaTasa)
     if (result.success) showMsg('Tasa BCV actualizada')
     return result
+  }
+
+  // ── Cargar instructores al entrar a la tab ──
+  useEffect(() => {
+    if (activeTab === 'instructores' && gymId) cargarInstructores()
+  }, [activeTab, gymId])
+
+  const cargarInstructores = async () => {
+    setInstructoresLoading(true)
+    const res = await getInstructores(gymId)
+    if (res.success) setInstructores(res.data)
+    setInstructoresLoading(false)
+  }
+
+  const handleCrearInstructor = async () => {
+    if (!instructorForm.nombre.trim()) return showMsg('El nombre es requerido', 'error')
+    if (!instructorForm.email.trim()) return showMsg('El email es requerido', 'error')
+    if (!instructorForm.password.trim()) return showMsg('La contraseña es requerida', 'error')
+    setSavingInstructor(true)
+    const res = await crearInstructor(gymId, instructorForm)
+    setSavingInstructor(false)
+    if (res.success) {
+      showMsg(`Instructor ${instructorForm.nombre} creado`)
+      setInstructorForm({ nombre: '', email: '', password: '' })
+      setShowInstructorForm(false)
+      cargarInstructores()
+    } else {
+      showMsg(res.error, 'error')
+    }
+  }
+
+  const handleDesactivarInstructor = async (instructor) => {
+    if (!window.confirm(`¿Desactivar a ${instructor.nombre}?`)) return
+    const res = await desactivarInstructor(gymId, instructor.user_id)
+    if (res.success) { showMsg('Instructor desactivado'); cargarInstructores() }
+    else showMsg(res.error, 'error')
+  }
+
+  const handleVerMiembros = async (instructor) => {
+    setSelectedInstructor(instructor)
+    const res = await getMiembrosInstructor(gymId, instructor.user_id)
+    if (res.success) setMiembrosInstructor(res.data)
+    const sociosRes = await getSocios(gymId)
+    if (sociosRes.success) setTodosLosSocios(sociosRes.data)
+    setShowAsignar(true)
+  }
+
+  const handleAsignar = async (socioId) => {
+    const res = await asignarMiembro(gymId, selectedInstructor.user_id, socioId)
+    if (res.success) {
+      const refresh = await getMiembrosInstructor(gymId, selectedInstructor.user_id)
+      if (refresh.success) setMiembrosInstructor(refresh.data)
+    } else showMsg(res.error, 'error')
+  }
+
+  const handleCambiarPassword = async () => {
+    if (!nuevaPassword.trim()) return showMsg('Ingresa la nueva contraseña', 'error')
+    setSavingPassword(true)
+    const res = await cambiarContrasenaInstructor(gymId, cambiarPassInstructor.user_id, nuevaPassword)
+    setSavingPassword(false)
+    if (res.success) {
+      showMsg(`Contraseña de ${cambiarPassInstructor.nombre} actualizada`)
+      setCambiarPassInstructor(null)
+      setNuevaPassword('')
+    } else {
+      showMsg(res.error, 'error')
+    }
+  }
+
+  const handleDesasignar = async (socioId) => {
+    const res = await desasignarMiembro(gymId, selectedInstructor.user_id, socioId)
+    if (res.success) {
+      setMiembrosInstructor(prev => prev.filter(m => m.id !== socioId))
+    } else showMsg(res.error, 'error')
   }
 
   const inputStyle = {
@@ -735,6 +830,218 @@ export default function Configuracion() {
           </div>
         </div>
       )}
+
+      {/* ═══════ TAB: INSTRUCTORES ═══════ */}
+      {activeTab === 'instructores' && (
+        <div className="gc-stagger-3">
+
+          {/* Panel asignación de miembros */}
+          {showAsignar && selectedInstructor ? (
+            <div>
+              <button
+                onClick={() => { setShowAsignar(false); setSelectedInstructor(null) }}
+                className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-5 transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+                Volver a instructores
+              </button>
+
+              <div className="flex items-center gap-3 mb-5 p-4 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)' }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-blue-400" style={{ background: 'rgba(59,130,246,0.15)' }}>
+                  {(selectedInstructor.nombre || selectedInstructor.email || '?').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-white font-semibold">{selectedInstructor.nombre || selectedInstructor.email}</p>
+                  <p className="text-gray-500 text-xs">{selectedInstructor.email} · {miembrosInstructor.length} miembro{miembrosInstructor.length !== 1 ? 's' : ''} asignado{miembrosInstructor.length !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Asignados</p>
+                  {miembrosInstructor.length === 0 ? (
+                    <p className="text-gray-600 text-sm py-4 text-center">Ningún miembro asignado aún</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {miembrosInstructor.map(m => (
+                        <div key={m.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
+                          <div>
+                            <p className="text-white text-sm font-medium">{m.nombre}</p>
+                            <p className="text-gray-500 text-[11px]">{m.plan_actual || 'Sin plan'}</p>
+                          </div>
+                          <button onClick={() => handleDesasignar(m.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Agregar miembro</p>
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                    {todosLosSocios
+                      .filter(s => !miembrosInstructor.find(m => m.id === s.id))
+                      .map(s => (
+                        <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div>
+                            <p className="text-gray-300 text-sm">{s.nombre}</p>
+                            <p className="text-gray-600 text-[11px]">{s.plan_actual || 'Sin plan'}</p>
+                          </div>
+                          <button onClick={() => handleAsignar(s.id)} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-gray-600 hover:text-blue-400 transition-colors">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          ) : (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-gray-400">{instructores.filter(i => i.activo).length} instructor{instructores.filter(i => i.activo).length !== 1 ? 'es' : ''} activo{instructores.filter(i => i.activo).length !== 1 ? 's' : ''}</p>
+                {!showInstructorForm && (
+                  <button onClick={() => setShowInstructorForm(true)}
+                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all duration-200"
+                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.3)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}>
+                    <IconPlus /> Nuevo instructor
+                  </button>
+                )}
+              </div>
+
+              {showInstructorForm && (
+                <div className="rounded-xl p-5 mb-4" style={{ background: 'linear-gradient(145deg, #0D1117, #111827)', border: '1px solid rgba(59,130,246,0.15)', animation: 'gcFadeInUp 0.3s ease-out' }}>
+                  <p className="text-sm font-semibold text-white mb-4">Nuevo instructor</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Nombre completo</label>
+                      <input type="text" value={instructorForm.nombre} onChange={e => setInstructorForm(p => ({ ...p, nombre: e.target.value }))} placeholder="María García" style={inputStyle} disabled={savingInstructor}
+                        onFocus={e => { e.target.style.borderColor = 'rgba(59,130,246,0.3)'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.08)' }}
+                        onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none' }} />
+                    </div>
+                    <div>
+                      <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Email</label>
+                      <input type="email" value={instructorForm.email} onChange={e => setInstructorForm(p => ({ ...p, email: e.target.value }))} placeholder="maria@gimnasio.com" style={inputStyle} disabled={savingInstructor}
+                        onFocus={e => { e.target.style.borderColor = 'rgba(59,130,246,0.3)'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.08)' }}
+                        onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none' }} />
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Contraseña privada</label>
+                    <input type="password" value={instructorForm.password} onChange={e => setInstructorForm(p => ({ ...p, password: e.target.value }))} placeholder="Mínimo 6 caracteres" style={inputStyle} disabled={savingInstructor}
+                      onFocus={e => { e.target.style.borderColor = 'rgba(59,130,246,0.3)'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.08)' }}
+                      onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none' }} />
+                    <p className="text-[11px] text-gray-600 mt-1">El instructor usará estas credenciales para ingresar a la PWA</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleCrearInstructor} disabled={savingInstructor}
+                      className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all"
+                      style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', opacity: savingInstructor ? 0.6 : 1 }}>
+                      {savingInstructor ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creando...</> : <><IconCheck /> Crear instructor</>}
+                    </button>
+                    <button onClick={() => { setShowInstructorForm(false); setInstructorForm({ nombre: '', email: '', password: '' }) }} disabled={savingInstructor}
+                      className="px-4 py-2 rounded-xl text-sm font-medium text-gray-400 hover:text-white transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {instructoresLoading ? (
+                <div className="text-center py-12">
+                  <div className="w-7 h-7 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">Cargando instructores...</p>
+                </div>
+              ) : instructores.length === 0 ? (
+                <div className="text-center py-12 rounded-xl" style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <p className="text-gray-400 font-medium mb-1">No hay instructores creados</p>
+                  <p className="text-gray-600 text-sm">Crea el primero con el botón de arriba</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {instructores.map(inst => (
+                    <div key={inst.id} className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(145deg, #0D1117, #111827)', border: `1px solid ${inst.activo ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.1)'}`, opacity: inst.activo ? 1 : 0.6 }}>
+                      <div className="flex items-center justify-between p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm" style={{ background: inst.activo ? 'rgba(59,130,246,0.12)' : 'rgba(107,114,128,0.1)', color: inst.activo ? '#60a5fa' : '#6b7280' }}>
+                            {(inst.nombre || inst.email || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-white font-semibold text-sm">{inst.nombre}</p>
+                            <p className="text-gray-500 text-[11px]">{inst.email}</p>
+                          </div>
+                          {!inst.activo && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.08)', color: '#f87171', border: '1px solid rgba(239,68,68,0.15)' }}>INACTIVO</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {inst.activo && (
+                            <button onClick={() => handleVerMiembros(inst)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                              style={{ background: 'rgba(59,130,246,0.08)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.15)' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.15)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.08)'}>
+                              Miembros
+                            </button>
+                          )}
+                          {inst.activo && (
+                            <button onClick={() => { setCambiarPassInstructor(cambiarPassInstructor?.id === inst.id ? null : inst); setNuevaPassword('') }}
+                              className="p-1.5 rounded-lg transition-colors"
+                              style={{ color: cambiarPassInstructor?.id === inst.id ? '#60a5fa' : '#6b7280', background: cambiarPassInstructor?.id === inst.id ? 'rgba(59,130,246,0.1)' : 'transparent' }}
+                              title="Cambiar contraseña">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                            </button>
+                          )}
+                          {inst.activo && (
+                            <button onClick={() => handleDesactivarInstructor(inst)}
+                              className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Panel cambiar contraseña inline */}
+                      {cambiarPassInstructor?.id === inst.id && (
+                        <div className="px-4 pb-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mt-3 mb-2">Nueva contraseña</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={nuevaPassword}
+                              onChange={e => setNuevaPassword(e.target.value)}
+                              placeholder="Mínimo 6 caracteres"
+                              style={{ ...inputStyle, flex: 1 }}
+                              disabled={savingPassword}
+                              onKeyDown={e => e.key === 'Enter' && handleCambiarPassword()}
+                            />
+                            <button onClick={handleCambiarPassword} disabled={savingPassword || !nuevaPassword.trim()}
+                              className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
+                              style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', whiteSpace: 'nowrap' }}>
+                              {savingPassword ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Actualizar'}
+                            </button>
+                            <button onClick={() => { setCambiarPassInstructor(null); setNuevaPassword('') }}
+                              className="px-3 py-2 rounded-xl text-sm text-gray-500 hover:text-white transition-colors"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
     </div>
   )
 }

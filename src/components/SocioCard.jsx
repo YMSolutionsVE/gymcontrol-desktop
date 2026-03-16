@@ -85,6 +85,21 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
             <span>Vence: {socio.fecha_vencimiento || '—'}</span>
           )}
         </div>
+
+        {/* Días de asistencia */}
+        {esPlanSesiones && socio.dias_semana?.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 shrink-0">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+            {socio.dias_semana.map(dia => (
+              <span key={dia} className="px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                style={{ background: 'rgba(59,130,246,0.08)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.15)' }}>
+                {dia.charAt(0).toUpperCase() + dia.slice(1)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Actions */}

@@ -151,6 +151,9 @@ export default function MiembroDetalle({ socioId, onVolver }) {
     { label: 'Total asistencias', value: asistencias.length },
     { label: 'Pagos realizados', value: pagos.length },
     { label: 'Última visita', value: asistencias[0] ? new Date(asistencias[0].fecha_hora).toLocaleDateString() : '—' },
+    ...(esPlanSesiones && socio.dias_semana?.length > 0
+      ? [{ label: 'Días que asiste', value: socio.dias_semana.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ') }]
+      : []),
   ]
 
   return (

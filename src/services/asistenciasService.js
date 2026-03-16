@@ -17,12 +17,6 @@ function validarGymId(gymId) {
 
 // Registrar asistencia
 export const registrarAsistencia = async (gymId, socioId) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. No se puede registrar la asistencia sin conexión.'
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
@@ -110,13 +104,6 @@ export const registrarAsistencia = async (gymId, socioId) => {
 
 // Obtener asistencias del día
 export const getAsistenciasHoy = async (gymId) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.',
-      data: []
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -163,13 +150,6 @@ export const getAsistenciasHoy = async (gymId) => {
 
 // Obtener lista completa de socios para asistencias (con clasificación)
 export const getSociosParaAsistencia = async (gymId) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.',
-      data: []
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }

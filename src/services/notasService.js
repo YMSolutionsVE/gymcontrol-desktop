@@ -9,9 +9,6 @@ function validarGymId(gymId) {
 }
 
 export const getNotas = async (gymId, socioId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -35,9 +32,6 @@ export const getNotas = async (gymId, socioId) => {
 }
 
 export const createNota = async (gymId, socioId, nota, registradoPor) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -71,9 +65,6 @@ export const createNota = async (gymId, socioId, nota, registradoPor) => {
 }
 
 export const deleteNota = async (gymId, notaId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }

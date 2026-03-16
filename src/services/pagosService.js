@@ -54,12 +54,6 @@ const calcularNuevaFechaVencimiento = (duracionDias, fechaVencimientoActual) => 
 // -- Servicios --
 
 export const registrarPago = async (gymId, pagoData) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. No se puede registrar el pago sin conexión.'
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
@@ -222,13 +216,6 @@ export const registrarPago = async (gymId, pagoData) => {
 }
 
 export const getPagosPorFecha = async (gymId, fechaInicio, fechaFin) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.',
-      data: []
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -259,13 +246,6 @@ export const getPagosPorFecha = async (gymId, fechaInicio, fechaFin) => {
 }
 
 export const getPagosBySocio = async (gymId, socioId) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.',
-      data: []
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -289,13 +269,6 @@ export const getPagosBySocio = async (gymId, socioId) => {
 }
 
 export const getPagos = async (gymId) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. Por favor, conéctate e intenta nuevamente.',
-      data: []
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -325,9 +298,6 @@ export const getPagos = async (gymId) => {
 // ============================================
 
 export const obtenerConfiguracion = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: null }
-  }
 
   if (!validarGymId(gymId)) {
     return {
@@ -362,9 +332,6 @@ export const obtenerConfiguracion = async (gymId) => {
 }
 
 export const getPendientesHoy = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -399,9 +366,6 @@ export const getPendientesHoy = async (gymId) => {
 }
 
 export const getPendientesSinConfirmar = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
@@ -435,12 +399,6 @@ export const getPendientesSinConfirmar = async (gymId) => {
 }
 
 export const confirmarPagoPendiente = async (gymId, pendienteId, datosConfirmacion) => {
-  if (!navigator.onLine) {
-    return {
-      success: false,
-      error: 'Sin conexión a Internet. No se puede confirmar el pago sin conexión.'
-    }
-  }
 
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }

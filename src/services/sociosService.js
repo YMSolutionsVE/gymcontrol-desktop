@@ -63,9 +63,6 @@ function validarGymId(gymId) {
 // ── Servicios ──
 
 export const getSocios = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -85,9 +82,6 @@ export const getSocios = async (gymId) => {
 }
 
 export const getSociosByEstado = async (gymId, estado) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -131,9 +125,6 @@ export const getSociosByEstado = async (gymId, estado) => {
 }
 
 export const getSocioById = async (gymId, id) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -153,9 +144,6 @@ export const getSocioById = async (gymId, id) => {
 }
 
 export const buscarSocios = async (gymId, termino) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -184,9 +172,6 @@ export const buscarSocios = async (gymId, termino) => {
 }
 
 export const createSocio = async (gymId, socioData) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet. No se puede registrar el socio.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -222,9 +207,6 @@ export const registrarSocio = async (gymId, socioData) => {
 }
 
 export const updateSocio = async (gymId, id, socioData) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet. No se puede actualizar el socio.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -250,9 +232,6 @@ export const actualizarSocio = async (gymId, id, socioData) => {
 }
 
 export const deactivateSocio = async (gymId, id) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -277,9 +256,6 @@ export const deleteSocio = async (gymId, id) => {
 }
 
 export const getHistorialPagos = async (gymId, socioId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -299,9 +275,6 @@ export const getHistorialPagos = async (gymId, socioId) => {
 }
 
 export const getHistorialAsistencias = async (gymId, socioId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }

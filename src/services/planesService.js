@@ -9,9 +9,6 @@ function validarGymId(gymId) {
 }
 
 export const getPlanes = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -33,9 +30,6 @@ export const getPlanes = async (gymId) => {
 }
 
 export const getAllPlanes = async (gymId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.', data: [] }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
   }
@@ -57,9 +51,6 @@ export const getAllPlanes = async (gymId) => {
 }
 
 export const getPlanById = async (gymId, planId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -80,9 +71,6 @@ export const getPlanById = async (gymId, planId) => {
 }
 
 export const createPlan = async (gymId, planData) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -115,9 +103,6 @@ export const createPlan = async (gymId, planData) => {
 }
 
 export const updatePlan = async (gymId, planId, planData) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -155,9 +140,6 @@ export const updatePlan = async (gymId, planId, planData) => {
 }
 
 export const togglePlan = async (gymId, planId, activo) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -179,9 +161,6 @@ export const togglePlan = async (gymId, planId, activo) => {
 }
 
 export const deletePlan = async (gymId, planId) => {
-  if (!navigator.onLine) {
-    return { success: false, error: 'Sin conexión a Internet.' }
-  }
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
