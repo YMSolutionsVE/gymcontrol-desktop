@@ -256,6 +256,7 @@ export default function Login() {
 
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
+  const appVersion = window?.electronAPI?.appVersion || '2.1.0'
 
   useEffect(() => {
     if (isAuthenticated && !showWelcome && !isLoggingIn.current) {
@@ -412,7 +413,7 @@ export default function Login() {
         minHeight: '100vh',
         display: 'flex',
         background: '#0a0e1a'
-      }}>
+      }} data-app-version={appVersion}>
 
         {/* ══════ LEFT PANEL — BRANDING ══════ */}
         <div

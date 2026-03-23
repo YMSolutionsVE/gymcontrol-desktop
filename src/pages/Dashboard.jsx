@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   if (!stats) return null
 
-  const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
+  const tasaBcv = Number(config?.tasa_bcv) || 0
   const ingresosHoyStr = '$' + stats.ingresosHoy.toFixed(2)
   const ingresosMesStr = '$' + stats.ingresosMes.toFixed(2)
   const ingresosHoyBs = 'Bs. ' + (stats.ingresosHoy * tasaBcv).toFixed(2)
@@ -100,7 +100,7 @@ export default function Dashboard() {
               background: 'linear-gradient(145deg, #0D1117, #111827)',
               border: '1px solid rgba(255,255,255,0.06)',
             }}
-            title="Se actualiza automáticamente 2 veces al día (L-V)"
+            title="Tasa BCV configurada para este gimnasio"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="1" x2="12" y2="23" />

@@ -22,7 +22,7 @@ export default function PagoForm({ socio, onComplete, onCancel }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
+  const tasaBcv = Number(config?.tasa_bcv) || 0
 
   // Auto-seleccionar el plan actual del socio cuando cargan los planes
   useEffect(() => {

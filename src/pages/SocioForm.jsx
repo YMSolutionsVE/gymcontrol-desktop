@@ -11,7 +11,7 @@ export default function SocioForm({ socio, onSave, onCancel }) {
   const { config } = useConfig()
   const { planes, loading: planesLoading } = usePlanes(gymId)
 
-  const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
+  const tasaBcv = Number(config?.tasa_bcv) || 0
 
   const [form, setForm] = useState({
     nombre: '', cedula: '', telefono: '',

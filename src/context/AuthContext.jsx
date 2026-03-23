@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../config/supabase'
+import { getSessionProfile } from '../services/sessionProfileService'
+import { buildDisplayGymProfile, getCommercialNotice, getGymAccessState } from '../lib/gymAccess'
 
 const AuthContext = createContext(null)
 
@@ -8,84 +10,68 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null)
   const [gym, setGym] = useState(null)
+  const [linkedGym, setLinkedGym] = useState(null)
   const [loading, setLoading] = useState(true)
   const [perfilCargado, setPerfilCargado] = useState(false)
 
+  const clearProfileState = useCallback(() => {
+    setUser(null)
+    setSession(null)
+    setRole(null)
+    setGym(null)
+    setLinkedGym(null)
+    setPerfilCargado(false)
+  }, [])
+
   const cargarPerfilCompleto = useCallback(async (userId) => {
     try {
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_roles')
-        .select('*')
-        .eq('user_id', userId)
-        .single()
+      const { role: perfil, gym: gimnasio } = await getSessionProfile(userId)
 
-      if (perfilError || !perfil) {
-        console.error('Error cargando perfil:', perfilError)
+      if (!perfil) {
+        console.warn('No se encontro un perfil activo para el usuario actual')
         setPerfilCargado(true)
         return
       }
 
-      if (!perfil.activo) {
-        console.warn('Usuario inactivo')
-        setPerfilCargado(true)
+      const accessState = getGymAccessState(perfil, gimnasio)
+      if (!accessState.allowed) {
+        console.warn(accessState.message)
+        await supabase.auth.signOut()
+        clearProfileState()
+        setLoading(false)
         return
       }
+
+      const gymToShow = buildDisplayGymProfile(perfil, gimnasio)
 
       setRole(perfil)
-
-      if (!perfil.gym_id) {
-        setGym({ nombre: 'YM Solutions', slug: 'ym-demo', en_trial: false })
-        setPerfilCargado(true)
-        return
-      }
-
-      const { data: gimnasio, error: gymError } = await supabase
-        .from('gimnasios')
-        .select('*')
-        .eq('id', perfil.gym_id)
-        .single()
-
-      if (gymError || !gimnasio) {
-        console.error('Error cargando gimnasio:', gymError)
-        setPerfilCargado(true)
-        return
-      }
-
-      setGym(gimnasio)
+      setLinkedGym(gimnasio || null)
+      setGym(gymToShow || null)
       setPerfilCargado(true)
     } catch (error) {
       console.error('Error en cargarPerfilCompleto:', error)
       setPerfilCargado(true)
     }
-  }, [])
+  }, [clearProfileState])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        console.log('Auth event:', event)
-
         if (event === 'SIGNED_OUT') {
-          setSession(null)
-          setUser(null)
-          setRole(null)
-          setGym(null)
-          setPerfilCargado(false)
+          clearProfileState()
           setLoading(false)
           return
         }
 
         if (event === 'TOKEN_REFRESHED') {
-          // Solo actualizar sesión, NO recargar perfil
           setSession(currentSession)
           return
         }
 
-        // INITIAL_SESSION o SIGNED_IN
         if (currentSession) {
           setSession(currentSession)
           setUser(currentSession.user)
 
-          // Solo cargar perfil si no se ha cargado ya
           if (!perfilCargado) {
             await cargarPerfilCompleto(currentSession.user.id)
           }
@@ -95,45 +81,52 @@ export function AuthProvider({ children }) {
       }
     )
 
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (!s) {
+    supabase.auth.getSession().then(async ({ data: { session: storedSession } }) => {
+      if (!storedSession) {
         setLoading(false)
+        return
       }
+
+      setSession(storedSession)
+      setUser(storedSession.user)
+
+      if (!perfilCargado) {
+        await cargarPerfilCompleto(storedSession.user.id)
+      }
+
+      setLoading(false)
     })
 
     return () => subscription?.unsubscribe()
-  }, [cargarPerfilCompleto, perfilCargado])
+  }, [cargarPerfilCompleto, clearProfileState, perfilCargado])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
-      setUser(null)
-      setSession(null)
-      setRole(null)
-      setGym(null)
-      setPerfilCargado(false)
+      clearProfileState()
     } catch (error) {
       console.error('Error cerrando sesion:', error)
     }
-  }
+  }, [clearProfileState])
 
-  // Memoizar el value para evitar re-renders innecesarios
   const value = useMemo(() => ({
     user,
     session,
     role,
     gym,
+    linkedGym,
     loading,
     isAuthenticated: !!session,
     isSuperAdmin: role?.rol === 'superadmin',
     isAdmin: role?.rol === 'admin' || role?.rol === 'superadmin',
     gymId: role?.gym_id || null,
     gymNombre: gym?.nombre || 'GymControl',
-    enTrial: gym?.en_trial || false,
-    trialEnd: gym?.trial_end || null,
-    logout
-  }), [user, session, role, gym, loading])
+    enTrial: linkedGym?.en_trial || gym?.en_trial || false,
+    trialEnd: linkedGym?.trial_end || gym?.trial_end || null,
+    commercialNotice: getCommercialNotice(role, linkedGym || gym),
+    logout,
+  }), [user, session, role, gym, linkedGym, loading, logout])
 
   return (
     <AuthContext.Provider value={value}>

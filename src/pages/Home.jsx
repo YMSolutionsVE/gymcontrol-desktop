@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { logout } from '../services/authService'
 import Sidebar from '../components/Sidebar'
 import Dashboard from './Dashboard'
@@ -8,6 +8,8 @@ import Reportes from './Reportes'
 import MiembroDetalle from './MiembroDetalle'
 import Configuracion from './Configuracion'
 import OfflineBanner from '../components/OfflineBanner'
+import SystemStatusBanners from '../components/SystemStatusBanners'
+import { useAuth } from '../context/AuthContext'
 
 const gcStyles = `
   @keyframes gcFadeInUp {
@@ -28,10 +30,19 @@ const gcStyles = `
 `
 
 export default function Home() {
-  const [currentPage, setCurrentPage] = useState('dashboard')
+  const { isSuperAdmin } = useAuth()
+  const [currentPage, setCurrentPage] = useState(isSuperAdmin ? 'configuracion' : 'dashboard')
   const [miembroDetalleId, setMiembroDetalleId] = useState(null)
 
+  useEffect(() => {
+    if (isSuperAdmin) {
+      setCurrentPage('configuracion')
+      setMiembroDetalleId(null)
+    }
+  }, [isSuperAdmin])
+
   const handleNavigate = (page) => {
+    if (isSuperAdmin && page !== 'configuracion') return
     setCurrentPage(page)
     setMiembroDetalleId(null)
   }
@@ -71,6 +82,7 @@ export default function Home() {
           />
 
           <div className="relative z-10">
+            <SystemStatusBanners />
             {currentPage === 'dashboard' && <Dashboard />}
             {currentPage === 'socios' && <Socios onVerMiembro={handleVerMiembro} />}
             {currentPage === 'miembro-detalle' && miembroDetalleId && (

@@ -1,4 +1,6 @@
 import { supabase } from '../config/supabase'
+import { getActiveUserRole, getSessionProfile } from './sessionProfileService'
+import { buildDisplayGymProfile, getGymAccessState } from '../lib/gymAccess'
 
 export const loginWithEmail = async (email, password) => {
   try {
@@ -9,25 +11,17 @@ export const loginWithEmail = async (email, password) => {
 
     if (error) throw error
 
-    // Cargar perfil con gym_id
-    const { data: perfil, error: perfilError } = await supabase
-      .from('usuarios_roles')
-      .select('*')
-      .eq('user_id', data.user.id)
-      .eq('activo', true)
-      .single()
+    const { role: perfil, gym: gimnasio } = await getSessionProfile(data.user.id)
 
-    if (perfilError) throw perfilError
+    if (!perfil) {
+      await supabase.auth.signOut()
+      throw new Error('No tienes un perfil activo asignado en GymControl.')
+    }
 
-    // Cargar gimnasio si tiene gym_id
-    let gimnasio = null
-    if (perfil.gym_id) {
-      const { data: gymData } = await supabase
-        .from('gimnasios')
-        .select('*')
-        .eq('id', perfil.gym_id)
-        .single()
-      gimnasio = gymData
+    const accessState = getGymAccessState(perfil, gimnasio)
+    if (!accessState.allowed) {
+      await supabase.auth.signOut()
+      throw new Error(accessState.message)
     }
 
     return {
@@ -35,7 +29,7 @@ export const loginWithEmail = async (email, password) => {
       user: data.user,
       session: data.session,
       role: perfil || { rol: 'sin_rol' },
-      gym: gimnasio
+      gym: buildDisplayGymProfile(perfil, gimnasio)
     }
   } catch (error) {
     return {
@@ -57,14 +51,7 @@ export const logout = async () => {
 
 export const getUserRole = async (userId) => {
   try {
-    const { data, error } = await supabase
-      .from('usuarios_roles')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('activo', true)
-      .single()
-
-    if (error && error.code !== 'PGRST116') throw error
+    const data = await getActiveUserRole(userId)
     return data || { rol: 'sin_rol' }
   } catch (error) {
     return { rol: 'sin_rol' }

@@ -59,17 +59,17 @@ export default function Sidebar({ currentPage, onNavigate }) {
   const { logout, isAdmin, isSuperAdmin } = useAuth()
   const [expanded, setExpanded] = useState(false)
 
-  const menuItems = [
-    { id: 'dashboard',   label: 'Dashboard',   Icon: IconDashboard },
-    { id: 'socios',      label: 'Miembros',    Icon: IconMembers   },
-    { id: 'asistencias', label: 'Asistencias', Icon: IconCheck     },
-    { id: 'reportes',    label: 'Reportes',    Icon: IconReportes  },
+  const baseMenuItems = [
+    { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard },
+    { id: 'socios', label: 'Miembros', Icon: IconMembers },
+    { id: 'asistencias', label: 'Asistencias', Icon: IconCheck },
+    { id: 'reportes', label: 'Reportes', Icon: IconReportes },
   ]
 
+  const menuItems = isSuperAdmin ? [] : baseMenuItems
   const showConfig = isAdmin || isSuperAdmin
+  const configLabel = isSuperAdmin ? 'Clientes Gym' : 'Configuracion'
 
-  // Padding-left that centers an icon of `iconW` in COLLAPSED width,
-  // then shifts to `leftPad` when expanded
   const iconPl = (iconW, leftPad = 12) =>
     expanded ? leftPad : Math.floor((COLLAPSED - iconW) / 2)
 
@@ -101,6 +101,7 @@ export default function Sidebar({ currentPage, onNavigate }) {
 
   const NavButton = ({ id, label, Icon: Ic }) => {
     const isActive = currentPage === id
+
     return (
       <button
         onClick={() => onNavigate(id)}
@@ -124,23 +125,28 @@ export default function Sidebar({ currentPage, onNavigate }) {
           color: isActive ? '#60a5fa' : '#6b7280',
           transition: `background 150ms ease, color 150ms ease, padding-left ${EASE}`,
         }}
-        onMouseEnter={(e) => {
+        onMouseEnter={(event) => {
           if (!isActive) {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-            e.currentTarget.style.color = '#d1d5db'
+            event.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+            event.currentTarget.style.color = '#d1d5db'
           }
         }}
-        onMouseLeave={(e) => {
+        onMouseLeave={(event) => {
           if (!isActive) {
-            e.currentTarget.style.background = 'transparent'
-            e.currentTarget.style.color = '#6b7280'
+            event.currentTarget.style.background = 'transparent'
+            event.currentTarget.style.color = '#6b7280'
           }
         }}
       >
         {isActive && (
           <div style={{
-            position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-            width: 3, height: 18, borderRadius: '0 3px 3px 0',
+            position: 'absolute',
+            left: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 3,
+            height: 18,
+            borderRadius: '0 3px 3px 0',
             background: 'linear-gradient(180deg, #3b82f6, #6366f1)',
             boxShadow: '0 0 8px rgba(59,130,246,0.4)',
           }} />
@@ -169,16 +175,20 @@ export default function Sidebar({ currentPage, onNavigate }) {
         zIndex: 20,
       }}
     >
-      {/* Subtle ambient glow */}
       <div style={{
-        position: 'absolute', top: -60, right: -60,
-        width: 160, height: 160, borderRadius: '50%', pointerEvents: 'none',
+        position: 'absolute',
+        top: -60,
+        right: -60,
+        width: 160,
+        height: 160,
+        borderRadius: '50%',
+        pointerEvents: 'none',
         background: 'radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%)',
       }} />
 
-      {/* ── Header / Brand ── */}
       <div style={{
-        paddingTop: 24, paddingBottom: 22,
+        paddingTop: 24,
+        paddingBottom: 22,
         paddingLeft: iconPl(36, 20),
         paddingRight: 20,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -195,9 +205,12 @@ export default function Sidebar({ currentPage, onNavigate }) {
             style={{ width: 36, height: 36, objectFit: 'contain', position: 'relative', zIndex: 1 }}
           />
           <div style={{
-            position: 'absolute', inset: 0, borderRadius: 8,
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 8,
             background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-            filter: 'blur(8px)', opacity: 0.25,
+            filter: 'blur(8px)',
+            opacity: 0.25,
           }} />
         </div>
         <div style={{
@@ -216,37 +229,40 @@ export default function Sidebar({ currentPage, onNavigate }) {
         </div>
       </div>
 
-      {/* ── Main nav ── */}
       <nav style={{ flex: 1, padding: '20px 8px 0' }}>
-        <p style={sectionTitle}>Menú</p>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {menuItems.map((item) => (
-            <li key={item.id}>
-              <NavButton id={item.id} label={item.label} Icon={item.Icon} />
-            </li>
-          ))}
-        </ul>
+        {menuItems.length > 0 && (
+          <>
+            <p style={sectionTitle}>Menu</p>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {menuItems.map((item) => (
+                <li key={item.id}>
+                  <NavButton id={item.id} label={item.label} Icon={item.Icon} />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
         {showConfig && (
-          <div style={{ marginTop: 20 }}>
+          <div style={{ marginTop: menuItems.length > 0 ? 20 : 0 }}>
             <p style={sectionTitle}>Ajustes</p>
-            <NavButton id="configuracion" label="Configuración" Icon={IconGear} />
+            <NavButton id="configuracion" label={configLabel} Icon={IconGear} />
           </div>
         )}
       </nav>
 
-      {/* ── Footer: status + logout ── */}
       <div style={{ padding: '0 8px 18px' }}>
         <div style={{
-          height: 1, margin: '0 4px 8px',
+          height: 1,
+          margin: '0 4px 8px',
           background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)',
         }} />
 
-        {/* Conexión */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          paddingTop: 6, paddingBottom: 6,
+          paddingTop: 6,
+          paddingBottom: 6,
           paddingLeft: iconPl(7, 12),
           gap: 8,
           fontSize: 12,
@@ -255,33 +271,40 @@ export default function Sidebar({ currentPage, onNavigate }) {
         }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{
-              width: 7, height: 7, borderRadius: '50%',
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
               background: isOnline ? '#34d399' : '#f87171',
             }} />
             {isOnline && (
               <div
                 className="animate-ping"
                 style={{
-                  position: 'absolute', inset: 0, width: 7, height: 7,
-                  borderRadius: '50%', background: '#34d399', opacity: 0.35,
+                  position: 'absolute',
+                  inset: 0,
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: '#34d399',
+                  opacity: 0.35,
                 }}
               />
             )}
           </div>
           <span style={{ ...labelStyle, marginLeft: 0, fontSize: 12, color: 'inherit', fontWeight: 400 }}>
-            {isOnline ? 'Conectado' : 'Sin conexión'}
+            {isOnline ? 'Conectado' : 'Sin conexion'}
           </span>
         </div>
 
-        {/* Cerrar sesión */}
         <button
           onClick={logout}
-          title={!expanded ? 'Cerrar sesión' : ''}
+          title={!expanded ? 'Cerrar sesion' : ''}
           style={{
             width: '100%',
             display: 'flex',
             alignItems: 'center',
-            paddingTop: 9, paddingBottom: 9,
+            paddingTop: 9,
+            paddingBottom: 9,
             paddingLeft: iconPl(16, 12),
             paddingRight: 12,
             borderRadius: 8,
@@ -291,17 +314,17 @@ export default function Sidebar({ currentPage, onNavigate }) {
             color: '#6b7280',
             transition: `color 150ms ease, background 150ms ease, padding-left ${EASE}`,
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#f87171'
-            e.currentTarget.style.background = 'rgba(239,68,68,0.06)'
+          onMouseEnter={(event) => {
+            event.currentTarget.style.color = '#f87171'
+            event.currentTarget.style.background = 'rgba(239,68,68,0.06)'
           }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#6b7280'
-            e.currentTarget.style.background = 'transparent'
+          onMouseLeave={(event) => {
+            event.currentTarget.style.color = '#6b7280'
+            event.currentTarget.style.background = 'transparent'
           }}
         >
           <IconLogout />
-          <span style={labelStyle}>Cerrar sesión</span>
+          <span style={labelStyle}>Cerrar sesion</span>
         </button>
       </div>
     </div>

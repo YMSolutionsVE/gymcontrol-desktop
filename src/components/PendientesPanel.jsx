@@ -17,11 +17,12 @@ import {
 // Modal de Confirmación de Pago (Redesigned)
 // ============================================
 function ConfirmarPagoModal({ pendiente, config, onConfirm, onCancel }) {
+  const tasaBcv = Number(config?.tasaBcv) || 0
   const [metodo, setMetodo] = useState('efectivo')
   const [referencia, setReferencia] = useState('')
   const [montoUsd, setMontoUsd] = useState(pendiente.monto_esperado)
   const [montoBs, setMontoBs] = useState(
-    (pendiente.monto_esperado * (config?.tasaBcv || 40)).toFixed(2)
+    (pendiente.monto_esperado * tasaBcv).toFixed(2)
   )
   const [confirmando, setConfirmando] = useState(false)
   const [error, setError] = useState(null)
@@ -29,13 +30,13 @@ function ConfirmarPagoModal({ pendiente, config, onConfirm, onCancel }) {
   const handleMontoUsdChange = (valor) => {
     setMontoUsd(valor)
     const usd = parseFloat(valor) || 0
-    setMontoBs((usd * config.tasaBcv).toFixed(2))
+    setMontoBs((usd * tasaBcv).toFixed(2))
   }
 
   const handleMontoBsChange = (valor) => {
     setMontoBs(valor)
     const bs = parseFloat(valor) || 0
-    setMontoUsd((bs / config.tasaBcv).toFixed(2))
+    setMontoUsd(tasaBcv > 0 ? (bs / tasaBcv).toFixed(2) : '0.00')
   }
 
   const handleConfirmar = async () => {
@@ -150,7 +151,9 @@ function ConfirmarPagoModal({ pendiente, config, onConfirm, onCancel }) {
               <input type="number" step="0.01" value={montoBs} onChange={(e) => handleMontoBsChange(e.target.value)} className={inputClass} />
             </div>
           </div>
-          <p className="text-[10px] text-gray-500 text-right -mt-3">Tasa BCV: Bs {config.tasaBcv} / $1</p>
+          <p className="text-[10px] text-gray-500 text-right -mt-3">
+            Tasa BCV: {tasaBcv > 0 ? `Bs ${tasaBcv} / $1` : 'No configurada'}
+          </p>
 
           {/* Error */}
           {error && (
@@ -188,7 +191,7 @@ function ConfirmarPagoModal({ pendiente, config, onConfirm, onCancel }) {
 export default function PendientesPanel() {
   const { user, gymId } = useAuth()
   const [pendientes, setPendientes] = useState([])
-  const [config, setConfig] = useState({ tasaBcv: 40, precioDiario: 1.50, precioMensual: 25 })
+  const [config, setConfig] = useState({ tasaBcv: 0, precioDiario: 1.50, precioMensual: 25 })
   const [loading, setLoading] = useState(true)
   const [mensaje, setMensaje] = useState(null)
   const [pendienteConfirmando, setPendienteConfirmando] = useState(null)
@@ -226,6 +229,7 @@ export default function PendientesPanel() {
   const sinConfirmar = pendientes.filter(p => !p.confirmado)
   const confirmados = pendientes.filter(p => p.confirmado)
   const totalPendienteUsd = sinConfirmar.reduce((sum, p) => sum + Number(p.monto_esperado), 0)
+  const tasaBcv = Number(config.tasaBcv) || 0
 
   return (
     <div>
@@ -299,7 +303,7 @@ export default function PendientesPanel() {
           <span className="text-amber-400 font-bold text-sm tabular-nums">
             ${totalPendienteUsd.toFixed(2)} USD
             <span className="text-amber-400/50 font-normal ml-1.5">
-              (Bs {(totalPendienteUsd * config.tasaBcv).toFixed(2)})
+              {tasaBcv > 0 ? `(Bs ${(totalPendienteUsd * tasaBcv).toFixed(2)})` : '(BCV no configurada)'}
             </span>
           </span>
         </div>
@@ -358,7 +362,9 @@ export default function PendientesPanel() {
               <div className="flex items-center gap-3 ml-4">
                 <div className="text-right">
                   <p className="text-amber-400 font-bold tabular-nums">${Number(p.monto_esperado).toFixed(2)}</p>
-                  <p className="text-gray-500 text-xs tabular-nums">Bs {(Number(p.monto_esperado) * config.tasaBcv).toFixed(2)}</p>
+                  <p className="text-gray-500 text-xs tabular-nums">
+                    {tasaBcv > 0 ? `Bs ${(Number(p.monto_esperado) * tasaBcv).toFixed(2)}` : 'BCV no configurada'}
+                  </p>
                 </div>
                 <button
                   onClick={() => setPendienteConfirmando(p)}

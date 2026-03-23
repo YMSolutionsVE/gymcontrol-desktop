@@ -302,7 +302,7 @@ export const obtenerConfiguracion = async (gymId) => {
   if (!validarGymId(gymId)) {
     return {
       success: true,
-      data: { tasaBcv: 40.00 }
+      data: { tasaBcv: null }
     }
   }
 
@@ -319,14 +319,14 @@ export const obtenerConfiguracion = async (gymId) => {
     return {
       success: true,
       data: {
-        tasaBcv: data?.tasa_bcv ?? 40.00
+        tasaBcv: data?.tasa_bcv ?? null
       }
     }
   } catch (error) {
     console.error('Error obteniendo configuración:', error)
     return {
       success: true,
-      data: { tasaBcv: 40.00 }
+      data: { tasaBcv: null }
     }
   }
 }

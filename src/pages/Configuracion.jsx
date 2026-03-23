@@ -6,10 +6,12 @@ import { createPlan, updatePlan, togglePlan, deletePlan } from '../services/plan
 import {
   getInstructores, crearInstructor, desactivarInstructor,
   getMiembrosInstructor, asignarMiembro, desasignarMiembro,
-  cambiarContrasenaInstructor,
+  cambiarContrasenaInstructor, getTodosLosSociosAsignados,
 } from '../services/instructoresService'
 import { getSocios } from '../services/sociosService'
+import SuperadminClientesPanel from '../components/config/SuperadminClientesPanel'
 import TasaBcvEditor from '../components/TasaBcvEditor'
+import { supabase } from '../config/supabase'
 
 const IconPlus = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -42,7 +44,7 @@ const IconX = () => (
   </svg>
 )
 
-const TABS = [
+const BASE_TABS = [
   { id: 'planes', label: 'Planes y Precios' },
   { id: 'instructores', label: 'Instructores' },
   { id: 'general', label: 'General' },
@@ -52,12 +54,18 @@ const TABS = [
 const emptyPlanForm = { nombre: '', precio_usd: '', tipo: 'dias', duracion_dias: '30', cantidad_sesiones: '', descripcion: '' }
 
 export default function Configuracion() {
-  const { gymId, gymNombre } = useAuth()
+  const { gymId, gymNombre, isSuperAdmin } = useAuth()
   const { config, updateTasa } = useConfig()
   const { allPlanes, loading: planesLoading, reload: reloadPlanes } = usePlanes(gymId)
+  const tabs = isSuperAdmin
+    ? [{ id: 'clientes', label: 'Clientes Gym' }]
+    : BASE_TABS
 
-  const [activeTab, setActiveTab] = useState('planes')
-  const [showForm, setShowForm] = useState(false)
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'clientes' : 'planes')
+  const configHeaderName = isSuperAdmin ? 'YM Solutions - Superadmin' : gymNombre /*
+    ? 'YM Solutions · Superadmin'
+    : gymNombre
+  */ const [showForm, setShowForm] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
   const [planForm, setPlanForm] = useState(emptyPlanForm)
   const [saving, setSaving] = useState(false)
@@ -72,12 +80,22 @@ export default function Configuracion() {
   const [selectedInstructor, setSelectedInstructor] = useState(null)
   const [miembrosInstructor, setMiembrosInstructor] = useState([])
   const [todosLosSocios, setTodosLosSocios] = useState([])
+  const [sociosYaAsignados, setSociosYaAsignados] = useState([])
   const [showAsignar, setShowAsignar] = useState(false)
   const [cambiarPassInstructor, setCambiarPassInstructor] = useState(null)
   const [nuevaPassword, setNuevaPassword] = useState('')
   const [savingPassword, setSavingPassword] = useState(false)
+  const [adminPassNueva, setAdminPassNueva] = useState('')
+  const [adminPassConfirmar, setAdminPassConfirmar] = useState('')
+  const [savingAdminPass, setSavingAdminPass] = useState(false)
 
-  const tasaBcv = config ? parseFloat(config.tasa_bcv) : 0
+  useEffect(() => {
+    if (isSuperAdmin) {
+      setActiveTab('clientes')
+    }
+  }, [isSuperAdmin])
+
+  const tasaBcv = Number(config?.tasa_bcv) || 0
 
   const showMsg = (text, type = 'success') => {
     setMessage({ text, type })
@@ -203,10 +221,14 @@ export default function Configuracion() {
 
   const handleVerMiembros = async (instructor) => {
     setSelectedInstructor(instructor)
-    const res = await getMiembrosInstructor(gymId, instructor.user_id)
-    if (res.success) setMiembrosInstructor(res.data)
-    const sociosRes = await getSocios(gymId)
+    const [miembrosRes, sociosRes, asignadosRes] = await Promise.all([
+      getMiembrosInstructor(gymId, instructor.user_id),
+      getSocios(gymId),
+      getTodosLosSociosAsignados(gymId),
+    ])
+    if (miembrosRes.success) setMiembrosInstructor(miembrosRes.data)
     if (sociosRes.success) setTodosLosSocios(sociosRes.data)
+    if (asignadosRes.success) setSociosYaAsignados(asignadosRes.data)
     setShowAsignar(true)
   }
 
@@ -215,7 +237,23 @@ export default function Configuracion() {
     if (res.success) {
       const refresh = await getMiembrosInstructor(gymId, selectedInstructor.user_id)
       if (refresh.success) setMiembrosInstructor(refresh.data)
+      setSociosYaAsignados(prev => [...prev, socioId])
     } else showMsg(res.error, 'error')
+  }
+
+  const handleCambiarPasswordAdmin = async () => {
+    if (adminPassNueva.length < 6) return showMsg('La contraseña debe tener al menos 6 caracteres', 'error')
+    if (adminPassNueva !== adminPassConfirmar) return showMsg('Las contraseñas no coinciden', 'error')
+    setSavingAdminPass(true)
+    const { error } = await supabase.auth.updateUser({ password: adminPassNueva })
+    setSavingAdminPass(false)
+    if (error) {
+      showMsg(error.message, 'error')
+    } else {
+      showMsg('Contraseña actualizada correctamente')
+      setAdminPassNueva('')
+      setAdminPassConfirmar('')
+    }
   }
 
   const handleCambiarPassword = async () => {
@@ -236,6 +274,7 @@ export default function Configuracion() {
     const res = await desasignarMiembro(gymId, selectedInstructor.user_id, socioId)
     if (res.success) {
       setMiembrosInstructor(prev => prev.filter(m => m.id !== socioId))
+      setSociosYaAsignados(prev => prev.filter(id => id !== socioId))
     } else showMsg(res.error, 'error')
   }
 
@@ -273,7 +312,7 @@ export default function Configuracion() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">Configuración</h1>
-            <p className="text-gray-500 text-sm mt-0.5">{gymNombre}</p>
+            <p className="text-gray-500 text-sm mt-0.5">{configHeaderName}</p>
           </div>
         </div>
       </div>
@@ -302,7 +341,7 @@ export default function Configuracion() {
           padding: 4,
         }}
       >
-        {TABS.map(tab => (
+        {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -319,6 +358,10 @@ export default function Configuracion() {
       </div>
 
       {/* ═══════ TAB: PLANES ═══════ */}
+      {activeTab === 'clientes' && isSuperAdmin && (
+        <SuperadminClientesPanel showMsg={showMsg} />
+      )}
+
       {activeTab === 'planes' && (
         <div className="gc-stagger-3">
           {/* Add button */}
@@ -723,6 +766,62 @@ export default function Configuracion() {
               </div>
             </div>
           </div>
+
+          {/* Cambiar contraseña admin */}
+          <div
+            className="rounded-xl p-5"
+            style={{
+              background: 'linear-gradient(145deg, #0D1117, #111827)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">Cambiar mi contraseña</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] text-gray-600 font-medium mb-1.5">Nueva contraseña</p>
+                <input
+                  type="password"
+                  value={adminPassNueva}
+                  onChange={e => setAdminPassNueva(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  style={{ ...inputStyle, width: '100%' }}
+                  disabled={savingAdminPass}
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-600 font-medium mb-1.5">Confirmar nueva contraseña</p>
+                <input
+                  type="password"
+                  value={adminPassConfirmar}
+                  onChange={e => setAdminPassConfirmar(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  style={{ ...inputStyle, width: '100%' }}
+                  disabled={savingAdminPass}
+                  onKeyDown={e => e.key === 'Enter' && handleCambiarPasswordAdmin()}
+                />
+              </div>
+              {adminPassNueva && adminPassConfirmar && adminPassNueva !== adminPassConfirmar && (
+                <p className="text-red-400 text-xs">Las contraseñas no coinciden</p>
+              )}
+              <button
+                onClick={handleCambiarPasswordAdmin}
+                disabled={savingAdminPass || !adminPassNueva || !adminPassConfirmar}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', boxShadow: '0 2px 12px rgba(249,115,22,0.25)' }}
+              >
+                {savingAdminPass
+                  ? <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Actualizando...</span>
+                  : 'Actualizar contraseña'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -882,7 +981,7 @@ export default function Configuracion() {
                   <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Agregar miembro</p>
                   <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                     {todosLosSocios
-                      .filter(s => !miembrosInstructor.find(m => m.id === s.id))
+                      .filter(s => !sociosYaAsignados.includes(s.id))
                       .map(s => (
                         <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
                           <div>

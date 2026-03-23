@@ -1,5 +1,18 @@
 import { supabase } from '../config/supabase'
 
+const getTasaBcvInicial = async () => {
+  const { data, error } = await supabase
+    .from('configuracion')
+    .select('tasa_bcv')
+    .not('tasa_bcv', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data?.tasa_bcv ?? null
+}
+
 export const getConfig = async (gymId = null) => {
   try {
     let query = supabase.from('configuracion').select('*')
@@ -45,13 +58,15 @@ export const updateTasaBcv = async (nuevaTasa, gymId = null) => {
 }
 
 export const crearConfigGym = async (gymId, nombreGimnasio) => {
+  const tasaInicial = await getTasaBcvInicial()
+
   const { data, error } = await supabase
     .from('configuracion')
     .insert({
       gym_id: gymId,
       nombre_gimnasio: nombreGimnasio,
       moneda_base: 'USD',
-      tasa_bcv: 40.00,
+      tasa_bcv: tasaInicial,
       precio_mensual: 25.00,
       precio_diario: 1.50
     })

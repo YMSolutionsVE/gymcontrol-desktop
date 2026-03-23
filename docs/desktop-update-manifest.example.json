@@ -1,0 +1,13 @@
+{
+  "version": "2.1.1",
+  "required": false,
+  "title": "Nueva version disponible",
+  "message": "Incluye correcciones de seguridad y mejoras de estabilidad.",
+  "notes": [
+    "Correccion del panel superadmin",
+    "Mejoras de multitenancy",
+    "Ajustes de tasa BCV"
+  ],
+  "downloadUrl": "https://app.gymcontrol.ymsolutions.online/releases/GymControl-Setup-2.1.1.exe",
+  "publishedAt": "2026-03-23T20:30:00-04:00"
+}

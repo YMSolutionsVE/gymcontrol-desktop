@@ -109,6 +109,21 @@ export const cambiarContrasenaInstructor = async (gymId, instructorUserId, nueva
   }
 }
 
+// ── Obtener todos los socio_ids asignados a cualquier instructor del gym ──
+export const getTodosLosSociosAsignados = async (gymId) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'No se pudo identificar el gimnasio.', data: [] }
+  try {
+    const { data, error } = await supabase
+      .from('instructores_miembros')
+      .select('socio_id')
+      .eq('gym_id', gymId)
+    if (error) throw error
+    return { success: true, data: (data || []).map(r => r.socio_id) }
+  } catch (error) {
+    return { success: false, error: error.message, data: [] }
+  }
+}
+
 // ── Desasignar miembro de instructor ──
 export const desasignarMiembro = async (gymId, instructorUserId, socioId) => {
   if (!validarGymId(gymId)) return { success: false, error: 'No se pudo identificar el gimnasio.' }
