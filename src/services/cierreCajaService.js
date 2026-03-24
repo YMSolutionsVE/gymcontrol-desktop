@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase'
+import { calcularTotalesMultiMoneda } from '../lib/currencyUtils'
 
 const obtenerFechaLocal = () => {
   const ahora = new Date()
@@ -14,7 +15,7 @@ export const obtenerResumenHoy = async (gymId = null) => {
 
   let pagosQuery = supabase
     .from('pagos')
-    .select(`id, monto_usd, monto_bs, metodo, referencia, socios (nombre, cedula)`)
+    .select(`id, monto_usd, monto_bs, moneda_divisa, monto_divisa, metodo, referencia, socios (nombre, cedula)`)
     .gte('fecha_pago', inicio.toISOString())
     .lte('fecha_pago', fin.toISOString())
 
@@ -37,8 +38,7 @@ export const obtenerResumenHoy = async (gymId = null) => {
 
   const { count: asistencias } = await asistQuery
 
-  const totalUSD = pagos?.reduce((s, p) => s + Number(p.monto_usd || 0), 0) || 0
-  const totalBS = pagos?.reduce((s, p) => s + Number(p.monto_bs || 0), 0) || 0
+  const totales = calcularTotalesMultiMoneda(pagos || [])
 
   const detalleMetodos = {}
   pagos?.forEach(p => {
@@ -48,8 +48,9 @@ export const obtenerResumenHoy = async (gymId = null) => {
 
   return {
     fecha: fechaHoy,
-    totalUSD,
-    totalBS,
+    totalUSD: totales.totalUsd,
+    totalEUR: totales.totalEur,
+    totalBS: totales.totalBs,
     asistencias: asistencias || 0,
     detalle_metodos: detalleMetodos,
     detalle_pagos: pagos || []
@@ -74,8 +75,9 @@ export const cerrarDia = async (usuarioId, resumen, gymId = null) => {
 
   const insertData = {
     fecha: fechaHoy,
-    total_usd: resumen.totalUSD,
-    total_bs: resumen.totalBS,
+    total_usd: resumen.totalUSD || 0,
+    total_eur: resumen.totalEUR || 0,
+    total_bs: resumen.totalBS || 0,
     asistencias: resumen.asistencias,
     detalle_metodos: resumen.detalle_metodos,
     detalle_pagos: resumen.detalle_pagos,

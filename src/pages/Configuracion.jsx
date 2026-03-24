@@ -12,6 +12,7 @@ import { getSocios } from '../services/sociosService'
 import SuperadminClientesPanel from '../components/config/SuperadminClientesPanel'
 import TasaBcvEditor from '../components/TasaBcvEditor'
 import { supabase } from '../config/supabase'
+import { convertForeignToBs, getCurrencyBadge, getCurrencyLabel, getCurrencySymbol, getPlanBsEquivalent, getPlanCurrency } from '../lib/currencyUtils'
 
 const IconPlus = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -51,21 +52,19 @@ const BASE_TABS = [
   { id: 'modulos', label: 'Módulos' },
 ]
 
-const emptyPlanForm = { nombre: '', precio_usd: '', tipo: 'dias', duracion_dias: '30', cantidad_sesiones: '', descripcion: '' }
+const emptyPlanForm = { nombre: '', precio_usd: '', moneda_referencia: 'USD', tipo: 'dias', duracion_dias: '30', cantidad_sesiones: '', descripcion: '' }
 
 export default function Configuracion() {
   const { gymId, gymNombre, isSuperAdmin } = useAuth()
-  const { config, updateTasa } = useConfig()
+  const { config, updateRates } = useConfig()
   const { allPlanes, loading: planesLoading, reload: reloadPlanes } = usePlanes(gymId)
   const tabs = isSuperAdmin
     ? [{ id: 'clientes', label: 'Clientes Gym' }]
     : BASE_TABS
 
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'clientes' : 'planes')
-  const configHeaderName = isSuperAdmin ? 'YM Solutions - Superadmin' : gymNombre /*
-    ? 'YM Solutions · Superadmin'
-    : gymNombre
-  */ const [showForm, setShowForm] = useState(false)
+  const configHeaderName = isSuperAdmin ? 'YM Solutions - Superadmin' : gymNombre
+  const [showForm, setShowForm] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
   const [planForm, setPlanForm] = useState(emptyPlanForm)
   const [saving, setSaving] = useState(false)
@@ -96,6 +95,7 @@ export default function Configuracion() {
   }, [isSuperAdmin])
 
   const tasaBcv = Number(config?.tasa_bcv) || 0
+  const tasaEur = Number(config?.tasa_eur) || 0
 
   const showMsg = (text, type = 'success') => {
     setMessage({ text, type })
@@ -113,6 +113,7 @@ export default function Configuracion() {
     setPlanForm({
       nombre: plan.nombre,
       precio_usd: String(plan.precio_usd),
+      moneda_referencia: plan.moneda_referencia || 'USD',
       tipo: plan.tipo || 'dias',
       duracion_dias: String(plan.duracion_dias || ''),
       cantidad_sesiones: String(plan.cantidad_sesiones || ''),
@@ -130,6 +131,7 @@ export default function Configuracion() {
   const handleSavePlan = async () => {
     if (!planForm.nombre.trim()) return showMsg('El nombre es requerido', 'error')
     if (!planForm.precio_usd || parseFloat(planForm.precio_usd) <= 0) return showMsg('El precio debe ser mayor a 0', 'error')
+    if (!['USD', 'EUR'].includes(planForm.moneda_referencia)) return showMsg('Selecciona una moneda valida para el plan', 'error')
     if (planForm.tipo === 'sesiones' && (!planForm.cantidad_sesiones || parseInt(planForm.cantidad_sesiones) <= 0)) return showMsg('La cantidad de sesiones debe ser mayor a 0', 'error')
     if (planForm.tipo === 'dias' && (!planForm.duracion_dias || parseInt(planForm.duracion_dias) <= 0)) return showMsg('La duración debe ser mayor a 0 días', 'error')
 
@@ -177,9 +179,9 @@ export default function Configuracion() {
     }
   }
 
-  const handleUpdateTasa = async (nuevaTasa) => {
-    const result = await updateTasa(nuevaTasa)
-    if (result.success) showMsg('Tasa BCV actualizada')
+  const handleUpdateTasa = async (tasas) => {
+    const result = await updateRates(tasas)
+    if (result.success) showMsg('Tasas de cambio actualizadas')
     return result
   }
 
@@ -416,7 +418,7 @@ export default function Configuracion() {
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Precio USD</label>
+                  <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Precio {getCurrencySymbol(planForm.moneda_referencia)}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -429,11 +431,32 @@ export default function Configuracion() {
                     onFocus={(e) => { e.target.style.borderColor = 'rgba(59,130,246,0.3)'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.08)' }}
                     onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.08)'; e.target.style.boxShadow = 'none' }}
                   />
-                  {planForm.precio_usd && tasaBcv > 0 && (
+                  {planForm.precio_usd && convertForeignToBs(planForm.precio_usd, planForm.moneda_referencia, config) > 0 && (
                     <p className="text-[11px] mt-1" style={{ color: '#4b5563' }}>
-                      ≈ Bs. {(parseFloat(planForm.precio_usd) * tasaBcv).toFixed(2)}
+                      Aproximado en Bs: {convertForeignToBs(planForm.precio_usd, planForm.moneda_referencia, config).toFixed(2)}
                     </p>
                   )}
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="block text-gray-500 text-[11px] uppercase tracking-wider mb-1.5">Moneda de referencia</label>
+                <div className="flex gap-2">
+                  {['USD', 'EUR'].map(moneda => (
+                    <button
+                      key={moneda}
+                      type="button"
+                      onClick={() => setPlanForm(p => ({ ...p, moneda_referencia: moneda }))}
+                      disabled={saving}
+                      className="px-4 py-2 rounded-lg text-xs font-medium transition-all"
+                      style={{
+                        background: planForm.moneda_referencia === moneda ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                        border: planForm.moneda_referencia === moneda ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                        color: planForm.moneda_referencia === moneda ? '#60a5fa' : '#9ca3af',
+                      }}
+                    >
+                      {getCurrencyBadge(moneda)} {getCurrencyLabel(moneda)}
+                    </button>
+                  ))}
                 </div>
               </div>
               {/* Tipo de plan */}
@@ -600,10 +623,12 @@ export default function Configuracion() {
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-sm">
-                        <span style={{ color: '#34d399', fontWeight: 600 }}>${parseFloat(plan.precio_usd).toFixed(2)}</span>
-                        {tasaBcv > 0 && (
+                        <span style={{ color: '#34d399', fontWeight: 600 }}>
+                          {getCurrencyBadge(getPlanCurrency(plan))} {parseFloat(plan.precio_usd).toFixed(2)}
+                        </span>
+                        {getPlanBsEquivalent(plan, config) > 0 && (
                           <span style={{ color: '#4b5563', fontSize: 12 }}>
-                            Bs. {(parseFloat(plan.precio_usd) * tasaBcv).toFixed(2)}
+                            Bs. {getPlanBsEquivalent(plan, config).toFixed(2)}
                           </span>
                         )}
                         <span style={{ color: '#6b7280', fontSize: 12 }}>
@@ -684,9 +709,16 @@ export default function Configuracion() {
                             Inactivo
                           </span>
                         </div>
-                        <span style={{ color: '#4b5563', fontSize: 13 }}>
-                          ${parseFloat(plan.precio_usd).toFixed(2)} · {plan.tipo === 'sesiones' ? `${plan.cantidad_sesiones} ses.` : `${plan.duracion_dias} días`}
-                        </span>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span style={{ color: '#4b5563', fontSize: 13 }}>
+                            {getCurrencyBadge(getPlanCurrency(plan))}{parseFloat(plan.precio_usd).toFixed(2)} � {plan.tipo === 'sesiones' ? `${plan.cantidad_sesiones} ses.` : `${plan.duracion_dias} dias`}
+                          </span>
+                          {getPlanBsEquivalent(plan, config) > 0 && (
+                            <span style={{ color: '#374151', fontSize: 12 }}>
+                              Bs. {getPlanBsEquivalent(plan, config).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
                         onClick={() => handleToggle(plan)}
@@ -724,7 +756,7 @@ export default function Configuracion() {
             </div>
           </div>
 
-          {/* Tasa BCV */}
+          {/* Tasas de cambio */}
           <div
             className="rounded-xl p-5"
             style={{
@@ -732,14 +764,18 @@ export default function Configuracion() {
               border: '1px solid rgba(255,255,255,0.06)',
             }}
           >
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Tasa BCV</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Tasas vigentes</p>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-400 font-bold text-2xl tabular-nums">Bs. {tasaBcv.toFixed(2)}</p>
                 <p className="text-gray-600 text-xs mt-0.5">Tasa de conversión USD → Bolívares</p>
               </div>
+              <div>
+                <p className="text-emerald-400 font-bold text-2xl tabular-nums">Bs. {tasaEur.toFixed(2)}</p>
+                <p className="text-gray-600 text-xs mt-0.5">EUR a Bolivares</p>
+              </div>
               <div className="relative">
-                <TasaBcvEditor tasaActual={tasaBcv} onUpdate={handleUpdateTasa} compact />
+                <TasaBcvEditor tasasActuales={{ tasa_bcv: tasaBcv, tasa_eur: tasaEur }} onUpdate={handleUpdateTasa} compact />
               </div>
             </div>
           </div>
@@ -752,8 +788,8 @@ export default function Configuracion() {
               border: '1px solid rgba(255,255,255,0.06)',
             }}
           >
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Moneda</p>
-            <div className="flex items-center gap-3">
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold mb-3">Monedas disponibles</p>
+            <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold"
                 style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', color: '#34d399' }}
@@ -763,6 +799,18 @@ export default function Configuracion() {
               <div>
                 <p className="text-white font-medium">Dólar Estadounidense (USD)</p>
                 <p className="text-gray-600 text-xs">Moneda base del sistema. Conversión a Bs automática.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold"
+                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', color: '#60a5fa' }}
+              >
+                €
+              </div>
+              <div>
+                <p className="text-white font-medium">Euro (EUR)</p>
+                <p className="text-gray-600 text-xs">Los planes en EUR se convierten a Bs usando la tasa EUR vigente.</p>
               </div>
             </div>
           </div>
@@ -1144,3 +1192,5 @@ export default function Configuracion() {
     </div>
   )
 }
+
+

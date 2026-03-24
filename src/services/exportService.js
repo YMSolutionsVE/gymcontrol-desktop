@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { getCurrencyBadge, formatMoney, calcularTotalesMultiMoneda } from '../lib/currencyUtils'
 
 const generarIdSerie = () => {
   const ahora = new Date()
@@ -28,11 +29,10 @@ export const exportarCierreCajaPDF = async (cierre, fecha, nombreGimnasio = 'Gym
   const fechaAuditada = formatFecha(fecha)
   const generado = new Date().toLocaleString()
 
-  const totalUSD = Number(cierre.totalUSD || cierre.total_usd || 0)
-  const totalBS = Number(cierre.totalBS || cierre.total_bs || 0)
+  const pagos = cierre.detalle_pagos || []
+  const totales = calcularTotalesMultiMoneda(pagos)
   const asistencias = cierre.asistencias || 0
   const detalleMetodos = cierre.detalle_metodos || {}
-  const pagos = cierre.detalle_pagos || []
 
   // ===== HEADER =====
   doc.setFontSize(18)
@@ -48,15 +48,17 @@ export const exportarCierreCajaPDF = async (cierre, fecha, nombreGimnasio = 'Gym
   doc.text(`Fecha auditada: ${fechaAuditada}`, 14, 36)
   doc.text(`Generado: ${generado}`, 14, 42)
 
-  // ===== RESUMEN =====
+  // ===== RESUMEN — dinámico según monedas =====
+  const resumenRows = []
+  if (totales.totalUsd > 0) resumenRows.push(['Total USD', `$ ${formatMoney(totales.totalUsd)}`])
+  if (totales.totalEur > 0) resumenRows.push(['Total EUR', `EUR ${formatMoney(totales.totalEur)}`])
+  resumenRows.push(['Total Bs', `Bs ${formatMoney(totales.totalBs)}`])
+  resumenRows.push(['Asistencias', asistencias])
+
   autoTable(doc, {
     startY: 50,
     head: [['Concepto', 'Valor']],
-    body: [
-      ['Total USD', `$ ${totalUSD.toFixed(2)}`],
-      ['Total Bs', `Bs ${totalBS.toFixed(2)}`],
-      ['Asistencias', asistencias]
-    ],
+    body: resumenRows,
     styles: { fontSize: 10 },
     headStyles: { fillColor: [40, 130, 180], textColor: 255, fontStyle: 'bold' }
   })
@@ -64,7 +66,7 @@ export const exportarCierreCajaPDF = async (cierre, fecha, nombreGimnasio = 'Gym
   // ===== DESGLOSE POR MÉTODO =====
   const metodosRows = Object.entries(detalleMetodos).map(([m, v]) => [
     m.replace('_', ' '),
-    `Bs ${Number(v || 0).toFixed(2)}`
+    `Bs ${formatMoney(Number(v || 0))}`
   ])
 
   if (metodosRows.length) {
@@ -82,24 +84,30 @@ export const exportarCierreCajaPDF = async (cierre, fecha, nombreGimnasio = 'Gym
   if (pagos.length) {
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 10,
-      head: [['Socio', 'Cédula', 'Método', 'USD', 'Bs', 'Referencia']],
-      body: pagos.map(p => [
-        p.socios?.nombre || '-',
-        p.socios?.cedula || '-',
-        p.metodo ? p.metodo.replace('_', ' ') : '-',
-        Number(p.monto_usd || 0).toFixed(2),
-        Number(p.monto_bs || 0).toFixed(2),
-        p.referencia || '-'
-      ]),
+      head: [['Socio', 'Cédula', 'Método', 'Divisa', 'Monto', 'Bs', 'Referencia']],
+      body: pagos.map(p => {
+        const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+        const montoPrincipal = Number(p.monto_divisa || p.monto_usd || 0)
+        return [
+          p.socios?.nombre || '-',
+          p.socios?.cedula || '-',
+          p.metodo ? p.metodo.replace('_', ' ') : '-',
+          moneda,
+          `${getCurrencyBadge(moneda)}${formatMoney(montoPrincipal)}`,
+          formatMoney(Number(p.monto_bs || 0)),
+          p.referencia || '-'
+        ]
+      }),
       styles: { fontSize: 9, cellPadding: 3 },
       headStyles: { fillColor: [40, 130, 180], textColor: 255, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 30, halign: 'left' },
-        1: { cellWidth: 30, halign: 'left' },
-        2: { cellWidth: 30, halign: 'left' },
-        3: { cellWidth: 20, halign: 'right' },
-        4: { cellWidth: 25, halign: 'right' },
-        5: { cellWidth: 35, halign: 'right' }
+        0: { cellWidth: 25, halign: 'left' },
+        1: { cellWidth: 22, halign: 'left' },
+        2: { cellWidth: 22, halign: 'left' },
+        3: { cellWidth: 14, halign: 'center' },
+        4: { cellWidth: 22, halign: 'right' },
+        5: { cellWidth: 25, halign: 'right' },
+        6: { cellWidth: 30, halign: 'right' }
       }
     })
   }

@@ -92,7 +92,7 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
 
   let query = supabase
     .from('cierres_caja')
-    .select('fecha,total_usd,total_bs,asistencias')
+    .select('fecha,total_usd,total_eur,total_bs,asistencias')
     .gte('fecha', desde)
     .lte('fecha', hasta)
     .order('fecha', { ascending: true })
@@ -105,9 +105,14 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
   if (!data || data.length === 0) throw new Error('No hay datos para exportar')
 
   const totalUSD = data.reduce((s, d) => s + Number(d.total_usd || 0), 0)
+  const totalEUR = data.reduce((s, d) => s + Number(d.total_eur || 0), 0)
   const totalBS = data.reduce((s, d) => s + Number(d.total_bs || 0), 0)
   const totalAsistencias = data.reduce((s, d) => s + Number(d.asistencias || 0), 0)
   const generado = new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' })
+
+  // Detectar qué monedas tienen movimiento
+  const tieneUSD = totalUSD > 0 || data.some(d => Number(d.total_usd || 0) > 0)
+  const tieneEUR = totalEUR > 0 || data.some(d => Number(d.total_eur || 0) > 0)
 
   const wb = new ExcelJS.Workbook()
   wb.creator = `GymControl - ${nombreGimnasio}`
@@ -115,19 +120,28 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
 
   const ws = wb.addWorksheet('Consolidado de Cierres', { properties: { defaultColWidth: 18 } })
 
-  ws.mergeCells('A1:D1')
+  // Determinar columnas dinámicamente
+  const headers = ['Fecha']
+  if (tieneUSD) headers.push('Total USD ($)')
+  if (tieneEUR) headers.push('Total EUR (€)')
+  headers.push('Total Bs', 'Asistencias')
+
+  const colCount = headers.length
+  const lastCol = String.fromCharCode(64 + colCount) // A=1, B=2, etc.
+
+  ws.mergeCells(`A1:${lastCol}1`)
   const titleCell = ws.getCell('A1')
   titleCell.value = `${nombreGimnasio.toUpperCase()} — CONSOLIDADO DE CIERRES`
   titleCell.font = { bold: true, size: 14, color: { argb: COLORES.accentBlue }, name: 'Arial' }
   titleCell.alignment = { horizontal: 'center' }
 
-  ws.mergeCells('A2:D2')
+  ws.mergeCells(`A2:${lastCol}2`)
   const subtitleCell = ws.getCell('A2')
   subtitleCell.value = `${nombreGimnasio}  |  Período: ${desde} al ${hasta}`
   subtitleCell.font = { size: 10, color: { argb: '6B7280' }, name: 'Arial' }
   subtitleCell.alignment = { horizontal: 'center' }
 
-  ws.mergeCells('A3:D3')
+  ws.mergeCells(`A3:${lastCol}3`)
   const genCell = ws.getCell('A3')
   genCell.value = `Generado: ${generado}`
   genCell.font = { size: 9, color: { argb: '9CA3AF' }, name: 'Arial', italic: true }
@@ -135,7 +149,7 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
 
   ws.addRow([])
 
-  const headerRow = ws.addRow(['Fecha', 'Total USD ($)', 'Total Bs', 'Asistencias'])
+  const headerRow = ws.addRow(headers)
   headerRow.eachCell((cell) => {
     Object.assign(cell, {
       font: estiloEncabezado.font,
@@ -147,17 +161,23 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
   headerRow.height = 28
 
   data.forEach((d, i) => {
-    const row = ws.addRow([
-      d.fecha,
-      Number(d.total_usd || 0),
-      Number(d.total_bs || 0),
-      Number(d.asistencias || 0)
-    ])
+    const rowData = [d.fecha]
+    if (tieneUSD) rowData.push(Number(d.total_usd || 0))
+    if (tieneEUR) rowData.push(Number(d.total_eur || 0))
+    rowData.push(Number(d.total_bs || 0), Number(d.asistencias || 0))
+
+    const row = ws.addRow(rowData)
     aplicarEstiloFila(row, i % 2 === 0)
   })
 
   ws.addRow([])
-  const totRow = ws.addRow(['TOTALES', totalUSD, totalBS, totalAsistencias])
+
+  const totData = ['TOTALES']
+  if (tieneUSD) totData.push(totalUSD)
+  if (tieneEUR) totData.push(totalEUR)
+  totData.push(totalBS, totalAsistencias)
+
+  const totRow = ws.addRow(totData)
   totRow.eachCell((cell) => {
     Object.assign(cell, {
       font: estiloTotales.font,
@@ -168,13 +188,13 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
   })
   totRow.height = 30
 
-  ws.getColumn(1).width = 16
-  ws.getColumn(2).width = 18
-  ws.getColumn(3).width = 20
-  ws.getColumn(4).width = 16
-  ws.getColumn(2).numFmt = '$#,##0.00'
-  ws.getColumn(3).numFmt = '#,##0.00'
-  ws.getColumn(4).numFmt = '#,##0'
+  // Ajustar anchos y formatos
+  let colIdx = 1
+  ws.getColumn(colIdx).width = 16; colIdx++
+  if (tieneUSD) { ws.getColumn(colIdx).width = 18; ws.getColumn(colIdx).numFmt = '$#,##0.00'; colIdx++ }
+  if (tieneEUR) { ws.getColumn(colIdx).width = 18; ws.getColumn(colIdx).numFmt = '€#,##0.00'; colIdx++ }
+  ws.getColumn(colIdx).width = 20; ws.getColumn(colIdx).numFmt = '#,##0.00'; colIdx++
+  ws.getColumn(colIdx).width = 16; ws.getColumn(colIdx).numFmt = '#,##0'
 
   await descargarWorkbook(wb, `${nombreSlug}_cierres_${desde}_a_${hasta}.xlsx`)
 }
@@ -272,7 +292,7 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
 
   let query = supabase
     .from('pagos')
-    .select('monto_usd,monto_bs,metodo,referencia,fecha_pago,socios(nombre,cedula)')
+    .select('monto_usd,monto_bs,monto_divisa,moneda_divisa,metodo,referencia,fecha_pago,socios(nombre,cedula)')
     .gte('fecha_pago', inicio)
     .lte('fecha_pago', fin)
     .order('fecha_pago', { ascending: false })
@@ -284,8 +304,15 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
   if (error) throw new Error('Error obteniendo pagos')
   if (!data || data.length === 0) throw new Error('No hay pagos hoy para exportar')
 
-  const totalUSD = data.reduce((s, p) => s + Number(p.monto_usd || 0), 0)
   const totalBS = data.reduce((s, p) => s + Number(p.monto_bs || 0), 0)
+
+  // Agrupar por moneda
+  const porMoneda = {}
+  data.forEach(p => {
+    const m = (p.moneda_divisa || 'USD').toUpperCase()
+    if (!porMoneda[m]) porMoneda[m] = 0
+    porMoneda[m] += Number(p.monto_divisa || p.monto_usd || 0)
+  })
 
   const wb = new ExcelJS.Workbook()
   wb.creator = `GymControl - ${nombreGimnasio}`
@@ -299,13 +326,14 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
 
   ws.mergeCells('A2:F2')
   const sub = ws.getCell('A2')
-  sub.value = `${nombreGimnasio}  |  ${data.length} pagos registrados`
+  const resumenMonedas = Object.entries(porMoneda).map(([m, v]) => `${m}: ${v.toFixed(2)}`).join('  |  ')
+  sub.value = `${nombreGimnasio}  |  ${data.length} pagos  |  ${resumenMonedas}  |  Bs: ${totalBS.toFixed(2)}`
   sub.font = { size: 10, color: { argb: '6B7280' }, name: 'Arial' }
   sub.alignment = { horizontal: 'center' }
 
   ws.addRow([])
 
-  const headerRow = ws.addRow(['Miembro', 'Cédula', 'Método', 'USD', 'Bs', 'Referencia'])
+  const headerRow = ws.addRow(['Miembro', 'Cédula', 'Método', 'Divisa', 'Monto', 'Bs'])
   headerRow.eachCell((cell) => {
     Object.assign(cell, {
       font: estiloEncabezado.font,
@@ -318,19 +346,29 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
 
   data.forEach((p, i) => {
     const metodo = (p.metodo || '').replace('_', ' ')
+    const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+    const montoPrincipal = Number(p.monto_divisa || p.monto_usd || 0)
+
     const row = ws.addRow([
       p.socios?.nombre || '—',
       p.socios?.cedula || '—',
       metodo.charAt(0).toUpperCase() + metodo.slice(1),
-      Number(p.monto_usd || 0),
-      Number(p.monto_bs || 0),
-      p.referencia || '—'
+      moneda,
+      montoPrincipal,
+      Number(p.monto_bs || 0)
     ])
     aplicarEstiloFila(row, i % 2 === 0)
   })
 
   ws.addRow([])
-  const totRow = ws.addRow(['TOTALES', '', '', totalUSD, totalBS, ''])
+
+  // Fila de totales por cada moneda + Bs
+  const totLabels = ['TOTALES', '', '']
+  const totValues = []
+  Object.entries(porMoneda).forEach(([m, v]) => {
+    totValues.push(`${m}: ${v.toFixed(2)}`)
+  })
+  const totRow = ws.addRow([...totLabels, totValues.join(' | '), '', totalBS])
   totRow.eachCell((cell) => {
     Object.assign(cell, {
       font: estiloTotales.font,
@@ -344,9 +382,9 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
   ws.getColumn(1).width = 28
   ws.getColumn(2).width = 14
   ws.getColumn(3).width = 16
-  ws.getColumn(4).width = 14; ws.getColumn(4).numFmt = '$#,##0.00'
+  ws.getColumn(4).width = 10
   ws.getColumn(5).width = 16; ws.getColumn(5).numFmt = '#,##0.00'
-  ws.getColumn(6).width = 16
+  ws.getColumn(6).width = 18; ws.getColumn(6).numFmt = '#,##0.00'
 
   await descargarWorkbook(wb, `${nombreSlug}_pagos_${hoy}.xlsx`)
 }
@@ -391,7 +429,7 @@ export const exportarAsistenciasDelDiaXLSX = async (gymId = null, nombreGimnasio
 
   ws.mergeCells('A2:D2')
   const sub = ws.getCell('A2')
-  sub.value = `${nombreGimnasio}  |  ${unicos.length} entradas registradas`
+  sub.value = `${nombreGimnasio}  |  ${unicos.length} entradas registradas  |  ${new Date().toLocaleDateString('es-VE', { timeZone: 'America/Caracas' })}`
   sub.font = { size: 10, color: { argb: '6B7280' }, name: 'Arial' }
   sub.alignment = { horizontal: 'center' }
 

@@ -3,6 +3,7 @@ import { getDashboardStats } from '../services/dashboardService'
 import { useConfig } from '../hooks/useConfig'
 import { useAuth } from '../context/AuthContext'
 import StatCard from '../components/StatCard'
+import { formatMoney } from '../lib/currencyUtils'
 
 const getSaludo = () => {
   const hora = new Date().getHours()
@@ -18,6 +19,37 @@ const getFechaHoy = () => {
   })
 }
 
+// Construye las tarjetas de ingresos según qué divisas hubo realmente
+function buildIngresosCards(stats, label) {
+  const desglose = stats[label] || {}
+  const bs = label === 'desgloseHoy' ? stats.ingresosHoyBs : stats.ingresosMesBs
+  const cards = []
+
+  if ((desglose.USD || 0) > 0) {
+    cards.push({
+      moneda: 'USD',
+      valor: `
+$$
+{formatMoney(desglose.USD)}`,
+    })
+  }
+
+  if ((desglose.EUR || 0) > 0) {
+    cards.push({
+      moneda: 'EUR',
+      valor: `€${formatMoney(desglose.EUR)}`,
+    })
+  }
+
+  // Bs siempre
+  cards.push({
+    moneda: 'Bs',
+    valor: `Bs. ${formatMoney(bs || 0)}`,
+  })
+
+  return cards
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -26,10 +58,7 @@ export default function Dashboard() {
   const { gymId } = useAuth()
 
   const loadStats = useCallback(async () => {
-    if (!gymId) {
-      setLoading(false)
-      return
-    }
+    if (!gymId) { setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
@@ -44,9 +73,7 @@ export default function Dashboard() {
     }
   }, [gymId])
 
-  useEffect(() => {
-    loadStats()
-  }, [loadStats])
+  useEffect(() => { loadStats() }, [loadStats])
 
   if (loading) {
     return (
@@ -80,10 +107,17 @@ export default function Dashboard() {
   if (!stats) return null
 
   const tasaBcv = Number(config?.tasa_bcv) || 0
-  const ingresosHoyStr = '$' + stats.ingresosHoy.toFixed(2)
-  const ingresosMesStr = '$' + stats.ingresosMes.toFixed(2)
-  const ingresosHoyBs = 'Bs. ' + (stats.ingresosHoy * tasaBcv).toFixed(2)
-  const ingresosMesBs = 'Bs. ' + (stats.ingresosMes * tasaBcv).toFixed(2)
+  const tasaEur = Number(config?.tasa_eur) || 0
+
+  const cardsHoy = buildIngresosCards(stats, 'desgloseHoy')
+  const cardsMes = buildIngresosCards(stats, 'desgloseMes')
+
+  // Color por moneda
+  const colorMap = {
+    USD: { color: 'green', icon: 'dollar' },
+    EUR: { color: 'blue', icon: 'dollar' },
+    Bs: { color: 'green', icon: 'dollar' },
+  }
 
   return (
     <div className="p-8 max-w-[1200px]">
@@ -100,28 +134,34 @@ export default function Dashboard() {
               background: 'linear-gradient(145deg, #0D1117, #111827)',
               border: '1px solid rgba(255,255,255,0.06)',
             }}
-            title="Tasa BCV configurada para este gimnasio"
+            title="Tasas configuradas para este gimnasio"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23" />
-              <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-            </svg>
-            <span className="text-gray-500 text-xs font-medium">BCV</span>
-            {tasaBcv > 0 ? (
-              <span className="text-emerald-400 font-bold text-sm tabular-nums">
-                Bs. {tasaBcv.toFixed(2)}
-              </span>
-            ) : (
-              <span className="text-gray-600 text-sm">No configurada</span>
-            )}
+            <div>
+              <span className="text-gray-500 text-xs font-medium block">USD</span>
+              {tasaBcv > 0 ? (
+                <span className="text-emerald-400 font-bold text-sm tabular-nums">
+                  Bs. {tasaBcv.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-gray-600 text-sm">No configurada</span>
+              )}
+            </div>
+            <div className="w-px h-8 bg-white/[0.06]" />
+            <div>
+              <span className="text-gray-500 text-xs font-medium block">EUR</span>
+              {tasaEur > 0 ? (
+                <span className="text-blue-400 font-bold text-sm tabular-nums">
+                  Bs. {tasaEur.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-gray-600 text-sm">No configurada</span>
+              )}
+            </div>
           </div>
           <button
             onClick={loadStats}
             className="p-2.5 rounded-xl text-gray-400 transition-all duration-200"
-            style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
               e.currentTarget.style.color = '#ffffff'
@@ -148,10 +188,7 @@ export default function Dashboard() {
           {stats.porVencer > 0 && (
             <div
               className="flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{
-                background: 'rgba(245,158,11,0.04)',
-                border: '1px solid rgba(245,158,11,0.12)',
-              }}
+              style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" className="shrink-0">
                 <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
@@ -164,13 +201,11 @@ export default function Dashboard() {
           {stats.vencidos > 0 && (
             <div
               className="flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{
-                background: 'rgba(239,68,68,0.04)',
-                border: '1px solid rgba(239,68,68,0.12)',
-              }}
+              style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" className="shrink-0">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
               <p className="text-sm" style={{ color: 'rgba(248,113,113,0.9)' }}>
                 <span className="font-semibold">{stats.vencidos}</span> miembro{stats.vencidos !== 1 ? 's' : ''} con membresía vencida
@@ -182,58 +217,46 @@ export default function Dashboard() {
 
       {/* Stats grid - row 1 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <StatCard
-          title="Miembros activos"
-          value={stats.activos}
-          subtitle={stats.totalSocios + ' registrados'}
-          color="blue"
-          icon="members"
-          stagger={1}
-        />
-        <StatCard
-          title="Vencidos"
-          value={stats.vencidos}
-          color="red"
-          icon="alert"
-          stagger={2}
-        />
-        <StatCard
-          title="Por vencer"
-          value={stats.porVencer}
-          subtitle="Próximos 3 días"
-          color="yellow"
-          icon="clock"
-          stagger={3}
-        />
-        <StatCard
-          title="Entradas hoy"
-          value={stats.asistenciasHoy}
-          color="purple"
-          icon="entry"
-          stagger={4}
-        />
+        <StatCard title="Miembros activos" value={stats.activos} subtitle={stats.totalSocios + ' registrados'} color="blue" icon="members" stagger={1} />
+        <StatCard title="Vencidos" value={stats.vencidos} color="red" icon="alert" stagger={2} />
+        <StatCard title="Por vencer" value={stats.porVencer} subtitle="Próximos 3 días" color="yellow" icon="clock" stagger={3} />
+        <StatCard title="Entradas hoy" value={stats.asistenciasHoy} color="purple" icon="entry" stagger={4} />
       </div>
 
-      {/* Stats grid - row 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <StatCard
-          title="Ingresos hoy"
-          value={ingresosHoyStr}
-          subtitle={ingresosHoyBs}
-          color="green"
-          icon="dollar"
-          size="large"
-          stagger={5}
-        />
-        <StatCard
-          title="Ingresos del mes"
-          value={ingresosMesStr}
-          subtitle={ingresosMesBs}
-          color="green"
-          icon="dollar"
-          size="large"
-          stagger={6}
-        />
+      {/* Stats grid - row 2: Ingresos hoy dinámicos */}
+      <div className="mb-4">
+        <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold mb-3">Ingresos hoy</p>
+        <div className={`grid grid-cols-1 ${cardsHoy.length === 1 ? 'md:grid-cols-1' : cardsHoy.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+          {cardsHoy.map((c, i) => (
+            <StatCard
+              key={c.moneda}
+              title={c.moneda === 'Bs' ? 'Bolívares' : c.moneda === 'EUR' ? 'Euros' : 'Dólares'}
+              value={c.valor}
+              color={colorMap[c.moneda]?.color || 'green'}
+              icon="dollar"
+              size="large"
+              stagger={5 + i}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Stats grid - row 3: Ingresos mes dinámicos */}
+      <div>
+        <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold mb-3">Ingresos del mes</p>
+        <div className={`grid grid-cols-1 ${cardsMes.length === 1 ? 'md:grid-cols-1' : cardsMes.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+          {cardsMes.map((c, i) => (
+            <StatCard
+              key={c.moneda}
+              title={c.moneda === 'Bs' ? 'Bolívares' : c.moneda === 'EUR' ? 'Euros' : 'Dólares'}
+              value={c.valor}
+              color={colorMap[c.moneda]?.color || 'green'}
+              icon="dollar"
+              size="large"
+              stagger={8 + i}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

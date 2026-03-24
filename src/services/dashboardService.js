@@ -16,15 +16,16 @@ export const getDashboardStats = async (gymId = null) => {
       .eq('activo', true)
     if (gymId) sociosQuery = sociosQuery.eq('gym_id', gymId)
 
+    // Traer monto_bs como dato principal + divisa para desglose
     let pagosHoyQuery = supabase
       .from('pagos')
-      .select('monto_usd')
+      .select('monto_bs, monto_divisa, moneda_divisa')
       .gte('fecha_pago', hoy.toISOString())
     if (gymId) pagosHoyQuery = pagosHoyQuery.eq('gym_id', gymId)
 
     let pagosMesQuery = supabase
       .from('pagos')
-      .select('monto_usd')
+      .select('monto_bs, monto_divisa, moneda_divisa')
       .gte('fecha_pago', primerDiaMes.toISOString())
     if (gymId) pagosMesQuery = pagosMesQuery.eq('gym_id', gymId)
 
@@ -81,8 +82,25 @@ export const getDashboardStats = async (gymId = null) => {
       }
     })
 
-    const ingresosHoy = (pagosHoy || []).reduce((sum, p) => sum + parseFloat(p.monto_usd || 0), 0)
-    const ingresosMes = (pagosMes || []).reduce((sum, p) => sum + parseFloat(p.monto_usd || 0), 0)
+    // Calcular ingresos en Bs (denominador común real)
+    const ingresosHoyBs = (pagosHoy || []).reduce((sum, p) => sum + parseFloat(p.monto_bs || 0), 0)
+    const ingresosMesBs = (pagosMes || []).reduce((sum, p) => sum + parseFloat(p.monto_bs || 0), 0)
+
+    // Desglose por divisa para hoy
+    const desgloseHoy = {}
+    ;(pagosHoy || []).forEach(p => {
+      const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+      if (!desgloseHoy[moneda]) desgloseHoy[moneda] = 0
+      desgloseHoy[moneda] += parseFloat(p.monto_divisa || 0)
+    })
+
+    // Desglose por divisa para el mes
+    const desgloseMes = {}
+    ;(pagosMes || []).forEach(p => {
+      const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+      if (!desgloseMes[moneda]) desgloseMes[moneda] = 0
+      desgloseMes[moneda] += parseFloat(p.monto_divisa || 0)
+    })
 
     return {
       success: true,
@@ -91,8 +109,15 @@ export const getDashboardStats = async (gymId = null) => {
         activos,
         vencidos,
         porVencer,
-        ingresosHoy: Math.round(ingresosHoy * 100) / 100,
-        ingresosMes: Math.round(ingresosMes * 100) / 100,
+        // Bs como dato principal
+        ingresosHoyBs: Math.round(ingresosHoyBs * 100) / 100,
+        ingresosMesBs: Math.round(ingresosMesBs * 100) / 100,
+        // Desglose por divisa
+        desgloseHoy,
+        desgloseMes,
+        // Mantener compatibilidad (ahora solo USD real, no normalizado)
+        ingresosHoy: Math.round((desgloseHoy.USD || 0) * 100) / 100,
+        ingresosMes: Math.round((desgloseMes.USD || 0) * 100) / 100,
         asistenciasHoy: (asistHoy || []).length
       }
     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useConfig } from '../hooks/useConfig'
 import { usePlanes } from '../hooks/usePlanes'
+import { getCurrencyBadge, getPlanBsEquivalent, getPlanCurrency } from '../lib/currencyUtils'
 
 const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
 const DIAS_CORTO = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -220,7 +221,7 @@ export default function SocioForm({ socio, onSave, onCancel }) {
                 <option value="" style={{ background: '#0D1117' }}>— Seleccionar plan —</option>
                 {planes.map(p => (
                   <option key={p.id} value={p.id} style={{ background: '#0D1117' }}>
-                    {p.nombre} — ${parseFloat(p.precio_usd).toFixed(2)} ({p.tipo === 'sesiones' ? `${p.cantidad_sesiones} ses.` : `${p.duracion_dias}d`})
+                    {p.nombre} — {getCurrencyBadge(getPlanCurrency(p))}{parseFloat(p.precio_usd).toFixed(2)} ({p.tipo === 'sesiones' ? `${p.cantidad_sesiones} ses.` : `${p.duracion_dias}d`})
                   </option>
                 ))}
                 <option disabled style={{ background: '#0D1117' }}>──────────</option>
@@ -243,8 +244,8 @@ export default function SocioForm({ socio, onSave, onCancel }) {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-black text-lg" style={{ color: '#34d399' }}>${parseFloat(selectedPlan.precio_usd).toFixed(2)}</p>
-                    {tasaBcv > 0 && <p className="text-[11px] text-gray-500">Bs. {(parseFloat(selectedPlan.precio_usd) * tasaBcv).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
+                    <p className="font-black text-lg" style={{ color: '#34d399' }}>{getCurrencyBadge(getPlanCurrency(selectedPlan))}{parseFloat(selectedPlan.precio_usd).toFixed(2)}</p>
+                    {getPlanBsEquivalent(selectedPlan, config) > 0 && <p className="text-[11px] text-gray-500">Bs. {getPlanBsEquivalent(selectedPlan, config).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
                   </div>
                 </div>
                 {!isEditing && (

@@ -1,39 +1,56 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
-export default function TasaBcvEditor({ tasaActual, onUpdate, compact = false }) {
+export default function TasaBcvEditor({ tasasActuales, onUpdate, compact = false }) {
   const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
+  const [form, setForm] = useState({ tasa_bcv: '', tasa_eur: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const handleEdit = () => {
-    setValue(tasaActual ? tasaActual.toString() : '')
+  useEffect(() => {
+    if (!editing) return
+    setForm({
+      tasa_bcv: tasasActuales?.tasa_bcv ? String(tasasActuales.tasa_bcv) : '',
+      tasa_eur: tasasActuales?.tasa_eur ? String(tasasActuales.tasa_eur) : '',
+    })
+  }, [editing, tasasActuales])
+
+  const handleOpen = () => {
     setEditing(true)
     setError('')
   }
 
-  const handleCancel = () => {
+  const handleClose = () => {
     setEditing(false)
-    setValue('')
-    setError('')
     setSaving(false)
+    setError('')
+    setForm({ tasa_bcv: '', tasa_eur: '' })
   }
 
   const handleSave = async () => {
     setError('')
 
-    const numValue = parseFloat(value)
-    if (isNaN(numValue) || numValue <= 0) {
-      setError('Ingresa un valor válido mayor a 0')
+    const tasaBcv = parseFloat(form.tasa_bcv)
+    const tasaEur = parseFloat(form.tasa_eur)
+
+    if (isNaN(tasaBcv) || tasaBcv <= 0) {
+      setError('Ingresa una tasa USD valida mayor a 0')
+      return
+    }
+
+    if (isNaN(tasaEur) || tasaEur <= 0) {
+      setError('Ingresa una tasa EUR valida mayor a 0')
       return
     }
 
     setSaving(true)
     try {
-      const result = await onUpdate(value)
+      const result = await onUpdate({
+        tasaBcv: form.tasa_bcv,
+        tasaEur: form.tasa_eur,
+      })
+
       if (result?.success) {
-        setEditing(false)
-        setValue('')
+        handleClose()
       } else {
         setError(result?.error || 'Error al guardar')
       }
@@ -44,134 +61,125 @@ export default function TasaBcvEditor({ tasaActual, onUpdate, compact = false })
     }
   }
 
-  // ── Modo compact (inline en el dashboard) ──────────────────────────────────
-  if (compact) {
-    if (!editing) {
-      return (
-        <button
-          onClick={handleEdit}
-          className="ml-1 bg-blue-600 hover:bg-blue-700 px-2 py-0.5 rounded text-white text-xs transition-colors"
-        >
-          Editar
-        </button>
-      )
-    }
-
-    return (
-      <div className="absolute top-full right-0 mt-2 z-50 bg-[#1a2235] border border-blue-500 rounded-xl p-4 w-64 shadow-2xl">
-        <p className="text-gray-300 text-sm mb-3 font-medium">Actualizar tasa BCV</p>
-
-        {error && (
-          <div className="bg-red-900/30 border border-red-500/50 text-red-300 px-3 py-2 rounded text-xs mb-3">
-            {error}
-          </div>
-        )}
-
-        <input
-          type="number"
-          step="0.01"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="36.45"
-          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-1"
-          disabled={saving}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSave()
-            if (e.key === 'Escape') handleCancel()
-          }}
-        />
-        <p className="text-gray-500 text-xs mb-3">
-          Ejemplo: 36.45 (usa punto decimal, no coma)
-        </p>
-
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saving}
-            className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white text-xs rounded-lg transition-colors"
-          >
-            Cancelar
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Modo normal (card completa) ─────────────────────────────────────────────
-  if (!editing) {
-    return (
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-gray-400 text-sm">Tasa BCV actual</p>
-          <button
-            onClick={handleEdit}
-            className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-white text-sm transition-colors"
-          >
-            Editar
-          </button>
-        </div>
-        <p className="text-3xl font-bold text-blue-400">
-          Bs. {tasaActual ? parseFloat(tasaActual).toFixed(2) : '0.00'}
-        </p>
-        <p className="text-gray-500 text-xs mt-1">por cada dólar</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="bg-gray-800 rounded-xl p-5 border border-blue-500">
-      <p className="text-gray-300 text-sm mb-3 font-medium">Actualizar tasa BCV</p>
+    <>
+      <button
+        onClick={handleOpen}
+        className={compact
+          ? 'bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-white text-xs transition-colors'
+          : 'bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-white text-sm transition-colors'}
+      >
+        Editar tasas
+      </button>
 
-      {error && (
-        <div className="bg-red-900/30 border border-red-500/50 text-red-300 px-3 py-2 rounded text-xs mb-3">
-          {error}
+      {editing && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center px-4"
+          style={{ background: 'rgba(3, 7, 18, 0.72)', backdropFilter: 'blur(8px)' }}
+          onClick={handleClose}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl p-6"
+            style={{
+              background: 'linear-gradient(160deg, #0B1220, #101827)',
+              border: '1px solid rgba(96,165,250,0.18)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-white font-semibold text-lg">Tasas de cambio</p>
+                <p className="text-gray-500 text-sm mt-1">Actualiza las referencias vigentes para USD y EUR contra bolivares.</p>
+              </div>
+              <button
+                onClick={handleClose}
+                className="w-9 h-9 rounded-xl text-gray-400 hover:text-white transition-colors"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {error && (
+              <div className="bg-red-900/30 border border-red-500/50 text-red-300 px-3 py-2 rounded-lg text-sm mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+              <div
+                className="rounded-xl p-4"
+                style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.14)' }}
+              >
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
+                  USD a Bs
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.tasa_bcv}
+                  onChange={(e) => setForm((prev) => ({ ...prev, tasa_bcv: e.target.value }))}
+                  placeholder="36.45"
+                  className="w-full px-4 py-3 bg-[#0D1117] border border-white/[0.08] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  disabled={saving}
+                  autoFocus
+                />
+                <p className="text-gray-500 text-xs mt-2">Tasa vigente de referencia para planes en dolar.</p>
+              </div>
+
+              <div
+                className="rounded-xl p-4"
+                style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.14)' }}
+              >
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
+                  EUR a Bs
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.tasa_eur}
+                  onChange={(e) => setForm((prev) => ({ ...prev, tasa_eur: e.target.value }))}
+                  placeholder="39.80"
+                  className="w-full px-4 py-3 bg-[#0D1117] border border-white/[0.08] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  disabled={saving}
+                />
+                <p className="text-gray-500 text-xs mt-2">Tasa vigente de referencia para planes en euro.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-gray-500 text-[11px] uppercase tracking-wider font-semibold mb-1">BCV</p>
+                <p className="text-blue-400 font-bold text-xl tabular-nums">Bs. {Number(form.tasa_bcv || 0).toFixed(2)}</p>
+                <p className="text-gray-600 text-xs">por cada USD</p>
+              </div>
+              <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-gray-500 text-[11px] uppercase tracking-wider font-semibold mb-1">EUR</p>
+                <p className="text-emerald-400 font-bold text-xl tabular-nums">Bs. {Number(form.tasa_eur || 0).toFixed(2)}</p>
+                <p className="text-gray-600 text-xs">por cada EUR</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                {saving ? 'Guardando...' : 'Guardar tasas'}
+              </button>
+              <button
+                onClick={handleClose}
+                disabled={saving}
+                className="px-4 py-3 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-white text-sm rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
-
-      <div className="mb-3">
-        <input
-          type="number"
-          step="0.01"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="36.45"
-          className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={saving}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSave()
-            if (e.key === 'Escape') handleCancel()
-          }}
-        />
-        <p className="text-gray-500 text-xs mt-1">
-          Ejemplo: 36.45 (usa punto decimal, no coma)
-        </p>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {saving ? 'Guardando...' : 'Guardar'}
-        </button>
-        <button
-          onClick={handleCancel}
-          disabled={saving}
-          className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
+    </>
   )
 }

@@ -11,6 +11,7 @@ import GraficoAsistencias from '../components/reportes/GraficoAsistencias'
 import { exportarCierreCajaPDF } from '../services/exportService'
 import { exportarCierresPeriodoPDF } from '../services/exportPeriodosService'
 import { exportarCierresPorPeriodoCSV } from '../services/exportPeriodosCSVService'
+import { getCurrencyBadge, formatMoney, calcularTotalesMultiMoneda } from '../lib/currencyUtils'
 
 const hoyStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
 
@@ -204,6 +205,14 @@ export default function Reportes() {
     return ((current - previous) / previous * 100).toFixed(1)
   }
 
+  // Calcular totales multi-moneda del cierre actual
+  const cierreTotales = cierre?.detalle_pagos
+    ? calcularTotalesMultiMoneda(cierre.detalle_pagos)
+    : { totalUsd: 0, totalEur: 0, totalBs: 0 }
+
+  const tieneUsd = cierreTotales.totalUsd > 0
+  const tieneEur = cierreTotales.totalEur > 0
+
   return (
     <div className="p-8 max-w-[1200px]">
       {/* Header */}
@@ -295,6 +304,7 @@ export default function Reportes() {
 
       <MetricasResumen
         totalUSD={metricas.totalUSD}
+        totalEUR={metricas.totalEUR || 0}
         totalBS={metricas.totalBS}
         totalAsistencias={metricas.totalAsistencias}
         periodoLabel={formatPeriodoLabel(periodoActivo, desde, hasta)}
@@ -330,7 +340,7 @@ export default function Reportes() {
               <span className="text-gray-300 text-sm tabular-nums">{dia.fecha}</span>
               <div className="flex items-center gap-8">
                 <span className="text-emerald-400 text-sm font-medium tabular-nums">
-                  Bs {Number(dia.total_bs || 0).toFixed(2)}
+                  Bs {formatMoney(Number(dia.total_bs || 0))}
                 </span>
                 <span className="text-gray-400 text-sm tabular-nums w-28 text-right">
                   {dia.asistencias} asistencia{dia.asistencias !== 1 ? 's' : ''}
@@ -353,7 +363,6 @@ export default function Reportes() {
       <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-5">
         <h3 className="text-white font-semibold text-sm mb-4">Exportar reportes</h3>
 
-        {/* Export by period */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex gap-1.5">
             {periodoExport.map(p => (
@@ -381,7 +390,6 @@ export default function Reportes() {
           </button>
         </div>
 
-        {/* Export by specific date */}
         <div className="flex items-center gap-3 mt-4 pt-4 border-t border-white/[0.04]">
           <span className="text-gray-500 text-xs font-medium shrink-0">Cierre por fecha:</span>
           <input
@@ -431,16 +439,26 @@ export default function Reportes() {
             </div>
 
             <div className="p-6 overflow-y-auto flex-1">
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
-                  <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 to-emerald-600 rounded-l-xl" />
-                  <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total USD</p>
-                  <p className="text-emerald-400 font-bold text-2xl pl-2 tabular-nums">{'$' + Number(cierre.total_usd || cierre.totalUSD || 0).toFixed(2)}</p>
-                </div>
+              {/* Tarjetas de totales — dinámicas según monedas presentes */}
+              <div className={`grid gap-4 mb-6 ${tieneUsd && tieneEur ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                {tieneUsd && (
+                  <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 to-emerald-600 rounded-l-xl" />
+                    <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total USD</p>
+                    <p className="text-emerald-400 font-bold text-2xl pl-2 tabular-nums">${formatMoney(cierreTotales.totalUsd)}</p>
+                  </div>
+                )}
+                {tieneEur && (
+                  <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-blue-500 to-blue-600 rounded-l-xl" />
+                    <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total EUR</p>
+                    <p className="text-blue-400 font-bold text-2xl pl-2 tabular-nums">€{formatMoney(cierreTotales.totalEur)}</p>
+                  </div>
+                )}
                 <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
                   <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-green-500 to-green-600 rounded-l-xl" />
                   <p className="text-gray-400 text-xs font-medium mb-1 pl-2">Total Bs</p>
-                  <p className="text-green-400 font-bold text-2xl pl-2 tabular-nums">{'Bs ' + Number(cierre.total_bs || cierre.totalBS || 0).toFixed(2)}</p>
+                  <p className="text-green-400 font-bold text-2xl pl-2 tabular-nums">Bs {formatMoney(cierreTotales.totalBs)}</p>
                 </div>
                 <div className="relative overflow-hidden bg-[#0D1117] border border-white/[0.06] rounded-xl p-4">
                   <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-blue-500 to-blue-600 rounded-l-xl" />
@@ -456,7 +474,7 @@ export default function Reportes() {
                     {Object.entries(cierre.detalle_metodos).map(([m, v]) => (
                       <div key={m} className="bg-[#0D1117] border border-white/[0.06] rounded-lg px-4 py-3">
                         <p className="text-gray-400 text-xs capitalize mb-1">{m.replace('_', ' ')}</p>
-                        <p className="text-emerald-400 font-bold tabular-nums">{'Bs ' + Number(v).toFixed(2)}</p>
+                        <p className="text-emerald-400 font-bold tabular-nums">Bs {formatMoney(Number(v))}</p>
                       </div>
                     ))}
                   </div>
@@ -468,18 +486,25 @@ export default function Reportes() {
                   <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Detalle de pagos</p>
                   <div className="bg-[#0D1117] border border-white/[0.06] rounded-xl overflow-hidden">
                     <div className="grid grid-cols-6 gap-2 px-4 py-2.5 border-b border-white/[0.06] text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
-                      <span>Miembro</span><span>Cédula</span><span>Método</span><span>USD</span><span>Bs</span><span>Ref.</span>
+                      <span>Miembro</span><span>Cédula</span><span>Método</span><span>Monto</span><span>Bs</span><span>Ref.</span>
                     </div>
-                    {cierre.detalle_pagos.map((p, i) => (
-                      <div key={i} className="grid grid-cols-6 gap-2 px-4 py-2.5 border-b border-white/[0.03] text-sm text-gray-300 hover:bg-white/[0.02]">
-                        <span className="truncate">{p.socios?.nombre}</span>
-                        <span className="text-gray-400">{p.socios?.cedula}</span>
-                        <span className="capitalize text-gray-400">{p.metodo.replace('_', ' ')}</span>
-                        <span className="tabular-nums">{'$' + Number(p.monto_usd || 0).toFixed(2)}</span>
-                        <span className="tabular-nums">{'Bs ' + Number(p.monto_bs || 0).toFixed(2)}</span>
-                        <span className="text-gray-500">{p.referencia || '—'}</span>
-                      </div>
-                    ))}
+                    {cierre.detalle_pagos.map((p, i) => {
+                      const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+                      const montoPrincipal = Number(p.monto_divisa || p.monto_usd || 0)
+
+                      return (
+                        <div key={i} className="grid grid-cols-6 gap-2 px-4 py-2.5 border-b border-white/[0.03] text-sm text-gray-300 hover:bg-white/[0.02]">
+                          <span className="truncate">{p.socios?.nombre || '-'}</span>
+                          <span className="text-gray-400">{p.socios?.cedula || '-'}</span>
+                          <span className="capitalize text-gray-400">{(p.metodo || '').replace('_', ' ')}</span>
+                          <span className="tabular-nums" style={{ color: moneda === 'EUR' ? '#60a5fa' : '#34d399' }}>
+                            {getCurrencyBadge(moneda)}{formatMoney(montoPrincipal)}
+                          </span>
+                          <span className="tabular-nums">Bs {formatMoney(Number(p.monto_bs || 0))}</span>
+                          <span className="text-gray-500">{p.referencia || '-'}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}

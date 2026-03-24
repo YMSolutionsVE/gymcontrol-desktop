@@ -1,6 +1,6 @@
 import { supabase } from '../config/supabase'
 
-// -- Sanitizacion --
+// -- Sanitización --
 
 function sanitizeText(str) {
   if (str === null || str === undefined) return str
@@ -26,11 +26,6 @@ function validarGymId(gymId) {
   return true
 }
 
-/**
- * Calcula nueva fecha de vencimiento usando duracion_dias del plan.
- * Si el socio tiene vencimiento futuro, suma desde ahí (acumulable).
- * Si no, suma desde hoy.
- */
 const calcularNuevaFechaVencimiento = (duracionDias, fechaVencimientoActual) => {
   if (!duracionDias || duracionDias <= 0) return null
 
@@ -63,7 +58,8 @@ export const registrarPago = async (gymId, pagoData) => {
     const {
       socio_id, monto_usd, monto_bs, metodo, referencia,
       registrado_por, plan_id, plan_nombre, duracion_dias, es_cortesia,
-      nota_cortesia, tipo_plan, cantidad_sesiones
+      nota_cortesia, tipo_plan, cantidad_sesiones, moneda_divisa, monto_divisa,
+      tasa_aplicada
     } = pagoData
 
     if (!socio_id || !registrado_por) {
@@ -78,8 +74,8 @@ export const registrarPago = async (gymId, pagoData) => {
       return { success: false, error: 'Debe seleccionar un método de pago' }
     }
 
-    if (!es_cortesia && !monto_usd && !monto_bs) {
-      return { success: false, error: 'Debe indicar al menos un monto (USD o Bs)' }
+    if (!es_cortesia && !monto_divisa && !monto_usd && !monto_bs) {
+      return { success: false, error: 'Debe indicar al menos un monto' }
     }
 
     if (es_cortesia && (!nota_cortesia || !nota_cortesia.trim())) {
@@ -105,7 +101,6 @@ export const registrarPago = async (gymId, pagoData) => {
     // -- Verificar pago duplicado (solo planes por días) --
     if (!es_cortesia && tipo_plan !== 'sesiones' && duracion_dias) {
       if (duracion_dias <= 1) {
-        // Plan tipo diario: verificar si ya pagó hoy
         const fechaHoy = obtenerFechaLocal()
         const inicioHoy = new Date(fechaHoy + 'T00:00:00').toISOString()
         const finHoy = new Date(fechaHoy + 'T23:59:59').toISOString()
@@ -126,7 +121,6 @@ export const registrarPago = async (gymId, pagoData) => {
           }
         }
       } else {
-        // Plan tipo mensual/largo: verificar si tiene vencimiento futuro
         if (socio.fecha_vencimiento) {
           const vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
           if (vencimiento > hoy) {
@@ -157,6 +151,9 @@ export const registrarPago = async (gymId, pagoData) => {
         socio_id,
         monto_usd: es_cortesia ? 0 : (monto_usd || 0),
         monto_bs: es_cortesia ? 0 : (monto_bs || 0),
+        moneda_divisa: es_cortesia ? null : (moneda_divisa || 'USD'),
+        monto_divisa: es_cortesia ? 0 : (monto_divisa || 0),
+        tasa_aplicada: es_cortesia ? null : (tasa_aplicada || null),
         metodo: es_cortesia ? 'cortesia' : metodo,
         referencia: referenciaSanitizada || null,
         registrado_por,
@@ -167,7 +164,7 @@ export const registrarPago = async (gymId, pagoData) => {
 
     if (pagoError) throw pagoError
 
-    // -- Actualizar socio: plan_id, plan_actual, fecha_vencimiento/sesiones, cortesía --
+    // -- Actualizar socio --
     const updateSocio = {}
 
     if (es_cortesia) {
@@ -302,14 +299,14 @@ export const obtenerConfiguracion = async (gymId) => {
   if (!validarGymId(gymId)) {
     return {
       success: true,
-      data: { tasaBcv: null }
+      data: { tasaBcv: null, tasaEur: null }
     }
   }
 
   try {
     const { data, error } = await supabase
       .from('configuracion')
-      .select('tasa_bcv')
+      .select('tasa_bcv, tasa_eur')
       .eq('gym_id', gymId)
       .limit(1)
       .single()
@@ -319,14 +316,15 @@ export const obtenerConfiguracion = async (gymId) => {
     return {
       success: true,
       data: {
-        tasaBcv: data?.tasa_bcv ?? null
+        tasaBcv: data?.tasa_bcv ?? null,
+        tasaEur: data?.tasa_eur ?? null
       }
     }
   } catch (error) {
     console.error('Error obteniendo configuración:', error)
     return {
       success: true,
-      data: { tasaBcv: null }
+      data: { tasaBcv: null, tasaEur: null }
     }
   }
 }
@@ -347,6 +345,7 @@ export const getPendientesHoy = async (gymId) => {
         socio_id,
         tipo_plan,
         monto_esperado,
+        moneda_divisa,
         confirmado,
         registrado_por,
         created_at,
@@ -379,6 +378,7 @@ export const getPendientesSinConfirmar = async (gymId) => {
         socio_id,
         tipo_plan,
         monto_esperado,
+        moneda_divisa,
         confirmado,
         fecha,
         registrado_por,
@@ -429,13 +429,20 @@ export const confirmarPagoPendiente = async (gymId, pendienteId, datosConfirmaci
       return { success: false, error: 'Este pago ya fue confirmado' }
     }
 
+    // Respetar la moneda del pago pendiente
+    const monedaPendiente = pendiente.moneda_divisa || 'USD'
+    const montoDivisaPendiente = montoUsd || pendiente.monto_esperado
+
     const { error: pagoError } = await supabase
       .from('pagos')
       .insert({
         gym_id: gymId,
         socio_id: pendiente.socio_id,
-        monto_usd: montoUsd || pendiente.monto_esperado,
+        monto_usd: monedaPendiente === 'USD' ? montoDivisaPendiente : 0,
         monto_bs: montoBs || 0,
+        moneda_divisa: monedaPendiente,
+        monto_divisa: montoDivisaPendiente,
+        tasa_aplicada: null,
         metodo,
         referencia: referenciaSanitizada || null,
         registrado_por: registradoPor,

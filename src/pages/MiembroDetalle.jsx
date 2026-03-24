@@ -5,6 +5,7 @@ import { getSocioById, updateSocio } from '../services/sociosService'
 import { getPagosBySocio } from '../services/pagosService'
 import { getNotas, createNota, deleteNota } from '../services/notasService'
 import { supabase } from '../config/supabase'
+import { getCurrencyBadge, formatMoney } from '../lib/currencyUtils'
 import PagoForm from './PagoForm'
 import SocioForm from './SocioForm'
 
@@ -156,6 +157,36 @@ export default function MiembroDetalle({ socioId, onVolver }) {
       : []),
   ]
 
+  const getPaymentIcon = (pago) => {
+    const moneda = (pago.moneda_divisa || 'USD').toUpperCase()
+    if (moneda === 'EUR') {
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2">
+          <path d="M4 10h12M4 14h12M6 6a8 8 0 1 1 0 12" />
+        </svg>
+      )
+    }
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2">
+        <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+      </svg>
+    )
+  }
+
+  const getPaymentIconBg = (pago) => {
+    const moneda = (pago.moneda_divisa || 'USD').toUpperCase()
+    if (moneda === 'EUR') {
+      return {
+        background: 'rgba(59,130,246,0.08)',
+        border: '1px solid rgba(59,130,246,0.15)',
+      }
+    }
+    return {
+      background: 'rgba(16,185,129,0.08)',
+      border: '1px solid rgba(16,185,129,0.15)',
+    }
+  }
+
   return (
     <div className="p-8 max-w-[1000px] gc-fade-in">
 
@@ -180,7 +211,6 @@ export default function MiembroDetalle({ socioId, onVolver }) {
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div className="flex items-center gap-4">
-          {/* Avatar */}
           <div
             className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold"
             style={{
@@ -291,40 +321,45 @@ export default function MiembroDetalle({ socioId, onVolver }) {
           <p className="text-gray-600 text-sm py-4 text-center">Sin pagos registrados</p>
         ) : (
           <div className="space-y-1">
-            {pagos.map((p, i) => (
-              <div
-                key={p.id}
-                className="flex justify-between items-center py-3 px-3 rounded-lg transition-colors duration-150"
-                style={{
-                  background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
-                  borderBottom: '1px solid rgba(255,255,255,0.03)',
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{
-                      background: 'rgba(16,185,129,0.08)',
-                      border: '1px solid rgba(16,185,129,0.15)',
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2">
-                      <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-                    </svg>
+            {pagos.map((p, i) => {
+              const moneda = (p.moneda_divisa || 'USD').toUpperCase()
+              const montoPrincipal = Number(p.monto_divisa || p.monto_usd || 0)
+
+              return (
+                <div
+                  key={p.id}
+                  className="flex justify-between items-center py-3 px-3 rounded-lg transition-colors duration-150"
+                  style={{
+                    background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={getPaymentIconBg(p)}
+                    >
+                      {getPaymentIcon(p)}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-300">{p.metodo || 'Pago'}</p>
+                      <p className="text-[11px] text-gray-600">
+                        {new Date(p.created_at).toLocaleDateString()}
+                        {p.referencia && ` · Ref: ${p.referencia}`}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-300">{p.metodo || 'Pago'}</p>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold" style={{ color: moneda === 'EUR' ? '#60a5fa' : '#34d399' }}>
+                      {getCurrencyBadge(moneda)}{formatMoney(montoPrincipal)}
+                    </p>
                     <p className="text-[11px] text-gray-600">
-                      {new Date(p.created_at).toLocaleDateString()}
-                      {p.referencia && ` · Ref: ${p.referencia}`}
+                      Bs. {formatMoney(Number(p.monto_bs || 0))}
                     </p>
                   </div>
                 </div>
-                <p className="text-sm font-semibold" style={{ color: '#34d399' }}>
-                  ${p.monto_usd}
-                </p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

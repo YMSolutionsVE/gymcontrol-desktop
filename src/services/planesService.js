@@ -85,6 +85,7 @@ export const createPlan = async (gymId, planData) => {
         gym_id: gymId,
         nombre: planData.nombre.trim(),
         precio_usd: parseFloat(planData.precio_usd),
+        moneda_referencia: planData.moneda_referencia || 'USD',
         tipo,
         duracion_dias: tipo === 'sesiones' ? null : (parseInt(planData.duracion_dias) || 30),
         cantidad_sesiones: tipo === 'sesiones' ? (parseInt(planData.cantidad_sesiones) || null) : null,
@@ -110,6 +111,7 @@ export const updatePlan = async (gymId, planId, planData) => {
     const updateObj = {}
     if (planData.nombre !== undefined) updateObj.nombre = planData.nombre.trim()
     if (planData.precio_usd !== undefined) updateObj.precio_usd = parseFloat(planData.precio_usd)
+    if (planData.moneda_referencia !== undefined) updateObj.moneda_referencia = planData.moneda_referencia || 'USD'
     if (planData.tipo !== undefined) updateObj.tipo = planData.tipo
     if (planData.tipo === 'sesiones') {
       updateObj.duracion_dias = null

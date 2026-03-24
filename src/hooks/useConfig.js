@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getConfig, updateTasaBcv } from '../services/configService'
+import { getConfig, updateTasasCambio } from '../services/configService'
 import { useAuth } from '../context/AuthContext'
 
 export function useConfig() {
@@ -13,7 +13,6 @@ export function useConfig() {
     if (result.success && result.data) {
       setConfig(result.data)
     } else {
-      // Fallback con nombre del gym del contexto
       setConfig({ nombre_gimnasio: gymNombre })
     }
     setLoading(false)
@@ -25,8 +24,8 @@ export function useConfig() {
     }
   }, [gymId])
 
-  const updateTasa = async (nuevaTasa) => {
-    const result = await updateTasaBcv(nuevaTasa, gymId)
+  const updateRates = async (tasas) => {
+    const result = await updateTasasCambio(tasas, gymId)
     if (result.success) {
       setConfig(result.data)
     }
@@ -36,7 +35,7 @@ export function useConfig() {
   return {
     config,
     loading,
-    updateTasa,
+    updateRates,
     reload: loadConfig,
     nombreGimnasio: config?.nombre_gimnasio || gymNombre || 'GymControl'
   }

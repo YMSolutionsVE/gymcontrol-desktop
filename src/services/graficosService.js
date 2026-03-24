@@ -4,7 +4,7 @@ export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) =
   try {
     let query = supabase
       .from('cierres_caja')
-      .select('fecha, total_usd, total_bs')
+      .select('fecha, total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
       .order('fecha', { ascending: true })
@@ -20,6 +20,7 @@ export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) =
       data: data.map(d => ({
         fecha: d.fecha,
         usd: Number(d.total_usd) || 0,
+        eur: Number(d.total_eur) || 0,
         bs: Number(d.total_bs) || 0
       }))
     }
@@ -68,7 +69,7 @@ export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) =>
   try {
     let cierresQuery = supabase
       .from('cierres_caja')
-      .select('total_usd, total_bs')
+      .select('total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
 
@@ -79,6 +80,7 @@ export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) =>
     if (cierresError) throw cierresError
 
     const totalUSD = cierres.reduce((sum, c) => sum + Number(c.total_usd || 0), 0)
+    const totalEUR = cierres.reduce((sum, c) => sum + Number(c.total_eur || 0), 0)
     const totalBS = cierres.reduce((sum, c) => sum + Number(c.total_bs || 0), 0)
 
     const inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
@@ -98,14 +100,14 @@ export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) =>
 
     return {
       success: true,
-      data: { totalUSD, totalBS, totalAsistencias: count || 0 }
+      data: { totalUSD, totalEUR, totalBS, totalAsistencias: count || 0 }
     }
   } catch (error) {
     console.error('Error obteniendo métricas:', error)
     return {
       success: false,
       error: error.message,
-      data: { totalUSD: 0, totalBS: 0, totalAsistencias: 0 }
+      data: { totalUSD: 0, totalEUR: 0, totalBS: 0, totalAsistencias: 0 }
     }
   }
 }
