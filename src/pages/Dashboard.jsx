@@ -19,7 +19,6 @@ const getFechaHoy = () => {
   })
 }
 
-// Construye las tarjetas de ingresos según qué divisas hubo realmente
 function buildIngresosCards(stats, label) {
   const desglose = stats[label] || {}
   const bs = label === 'desgloseHoy' ? stats.ingresosHoyBs : stats.ingresosMesBs
@@ -28,26 +27,35 @@ function buildIngresosCards(stats, label) {
   if ((desglose.USD || 0) > 0) {
     cards.push({
       moneda: 'USD',
-      valor: `
-$$
-{formatMoney(desglose.USD)}`,
+      titulo: 'Dólares',
+      valor: '$' + formatMoney(desglose.USD),
+      color: 'green',
     })
   }
 
   if ((desglose.EUR || 0) > 0) {
     cards.push({
       moneda: 'EUR',
-      valor: `€${formatMoney(desglose.EUR)}`,
+      titulo: 'Euros',
+      valor: '€' + formatMoney(desglose.EUR),
+      color: 'blue',
     })
   }
 
-  // Bs siempre
   cards.push({
     moneda: 'Bs',
-    valor: `Bs. ${formatMoney(bs || 0)}`,
+    titulo: 'Bolívares',
+    valor: 'Bs. ' + formatMoney(bs || 0),
+    color: 'green',
   })
 
   return cards
+}
+
+function getGridCols(count) {
+  if (count === 1) return 'md:grid-cols-1'
+  if (count === 2) return 'md:grid-cols-2'
+  return 'md:grid-cols-3'
 }
 
 export default function Dashboard() {
@@ -112,13 +120,6 @@ export default function Dashboard() {
   const cardsHoy = buildIngresosCards(stats, 'desgloseHoy')
   const cardsMes = buildIngresosCards(stats, 'desgloseMes')
 
-  // Color por moneda
-  const colorMap = {
-    USD: { color: 'green', icon: 'dollar' },
-    EUR: { color: 'blue', icon: 'dollar' },
-    Bs: { color: 'green', icon: 'dollar' },
-  }
-
   return (
     <div className="p-8 max-w-[1200px]">
       {/* Header */}
@@ -140,7 +141,7 @@ export default function Dashboard() {
               <span className="text-gray-500 text-xs font-medium block">USD</span>
               {tasaBcv > 0 ? (
                 <span className="text-emerald-400 font-bold text-sm tabular-nums">
-                  Bs. {tasaBcv.toFixed(2)}
+                  {'Bs. ' + tasaBcv.toFixed(2)}
                 </span>
               ) : (
                 <span className="text-gray-600 text-sm">No configurada</span>
@@ -151,7 +152,7 @@ export default function Dashboard() {
               <span className="text-gray-500 text-xs font-medium block">EUR</span>
               {tasaEur > 0 ? (
                 <span className="text-blue-400 font-bold text-sm tabular-nums">
-                  Bs. {tasaEur.toFixed(2)}
+                  {'Bs. ' + tasaEur.toFixed(2)}
                 </span>
               ) : (
                 <span className="text-gray-600 text-sm">No configurada</span>
@@ -223,16 +224,16 @@ export default function Dashboard() {
         <StatCard title="Entradas hoy" value={stats.asistenciasHoy} color="purple" icon="entry" stagger={4} />
       </div>
 
-      {/* Stats grid - row 2: Ingresos hoy dinámicos */}
+      {/* Ingresos hoy */}
       <div className="mb-4">
         <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold mb-3">Ingresos hoy</p>
-        <div className={`grid grid-cols-1 ${cardsHoy.length === 1 ? 'md:grid-cols-1' : cardsHoy.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+        <div className={'grid grid-cols-1 ' + getGridCols(cardsHoy.length) + ' gap-4'}>
           {cardsHoy.map((c, i) => (
             <StatCard
               key={c.moneda}
-              title={c.moneda === 'Bs' ? 'Bolívares' : c.moneda === 'EUR' ? 'Euros' : 'Dólares'}
+              title={c.titulo}
               value={c.valor}
-              color={colorMap[c.moneda]?.color || 'green'}
+              color={c.color}
               icon="dollar"
               size="large"
               stagger={5 + i}
@@ -241,16 +242,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stats grid - row 3: Ingresos mes dinámicos */}
+      {/* Ingresos del mes */}
       <div>
         <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold mb-3">Ingresos del mes</p>
-        <div className={`grid grid-cols-1 ${cardsMes.length === 1 ? 'md:grid-cols-1' : cardsMes.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+        <div className={'grid grid-cols-1 ' + getGridCols(cardsMes.length) + ' gap-4'}>
           {cardsMes.map((c, i) => (
             <StatCard
               key={c.moneda}
-              title={c.moneda === 'Bs' ? 'Bolívares' : c.moneda === 'EUR' ? 'Euros' : 'Dólares'}
+              title={c.titulo}
               value={c.valor}
-              color={colorMap[c.moneda]?.color || 'green'}
+              color={c.color}
               icon="dollar"
               size="large"
               stagger={8 + i}
