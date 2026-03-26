@@ -1,34 +1,36 @@
 import { supabase } from '../config/supabase'
 import { calcularTotalesMultiMoneda } from '../lib/currencyUtils'
 
-const obtenerFechaLocal = () => {
-  const ahora = new Date()
-  const offset = ahora.getTimezoneOffset()
-  const fechaLocal = new Date(ahora.getTime() - offset * 60000)
+var obtenerFechaLocal = function() {
+  var ahora = new Date()
+  var offset = ahora.getTimezoneOffset()
+  var fechaLocal = new Date(ahora.getTime() - offset * 60000)
   return fechaLocal.toISOString().split('T')[0]
 }
 
-export const obtenerResumenHoy = async (gymId = null) => {
-  const fechaHoy = obtenerFechaLocal()
-  const inicio = new Date(fechaHoy + 'T00:00:00')
-  const fin = new Date(fechaHoy + 'T23:59:59')
+export var obtenerResumenHoy = async function(gymId) {
+  var fechaHoy = obtenerFechaLocal()
+  var inicio = new Date(fechaHoy + 'T00:00:00')
+  var fin = new Date(fechaHoy + 'T23:59:59')
 
-  let pagosQuery = supabase
+  var pagosQuery = supabase
     .from('pagos')
-    .select(`id, monto_usd, monto_bs, moneda_divisa, monto_divisa, metodo, referencia, socios (nombre, cedula)`)
+    .select('id, monto_usd, monto_bs, moneda_divisa, monto_divisa, metodo, referencia, descuento, motivo_descuento, tasa_aplicada, socios (nombre, cedula)')
     .gte('fecha_pago', inicio.toISOString())
     .lte('fecha_pago', fin.toISOString())
 
   if (gymId) pagosQuery = pagosQuery.eq('gym_id', gymId)
 
-  const { data: pagos, error } = await pagosQuery
+  var pagosResult = await pagosQuery
 
-  if (error) {
-    console.error(error)
+  if (pagosResult.error) {
+    console.error(pagosResult.error)
     return null
   }
 
-  let asistQuery = supabase
+  var pagos = pagosResult.data || []
+
+  var asistQuery = supabase
     .from('asistencias')
     .select('*', { count: 'exact', head: true })
     .gte('fecha_hora', inicio.toISOString())
@@ -36,12 +38,13 @@ export const obtenerResumenHoy = async (gymId = null) => {
 
   if (gymId) asistQuery = asistQuery.eq('gym_id', gymId)
 
-  const { count: asistencias } = await asistQuery
+  var asistResult = await asistQuery
+  var asistencias = asistResult.count || 0
 
-  const totales = calcularTotalesMultiMoneda(pagos || [])
+  var totales = calcularTotalesMultiMoneda(pagos)
 
-  const detalleMetodos = {}
-  pagos?.forEach(p => {
+  var detalleMetodos = {}
+  pagos.forEach(function(p) {
     if (!detalleMetodos[p.metodo]) detalleMetodos[p.metodo] = 0
     detalleMetodos[p.metodo] += Number(p.monto_bs || 0)
   })
@@ -51,29 +54,29 @@ export const obtenerResumenHoy = async (gymId = null) => {
     totalUSD: totales.totalUsd,
     totalEUR: totales.totalEur,
     totalBS: totales.totalBs,
-    asistencias: asistencias || 0,
+    asistencias: asistencias,
     detalle_metodos: detalleMetodos,
-    detalle_pagos: pagos || []
+    detalle_pagos: pagos
   }
 }
 
-export const cerrarDia = async (usuarioId, resumen, gymId = null) => {
-  const fechaHoy = obtenerFechaLocal()
+export var cerrarDia = async function(usuarioId, resumen, gymId) {
+  var fechaHoy = obtenerFechaLocal()
 
-  let existeQuery = supabase
+  var existeQuery = supabase
     .from('cierres_caja')
     .select('id')
     .eq('fecha', fechaHoy)
 
   if (gymId) existeQuery = existeQuery.eq('gym_id', gymId)
 
-  const { data: existente } = await existeQuery.maybeSingle()
+  var existeResult = await existeQuery.maybeSingle()
 
-  if (existente) {
+  if (existeResult.data) {
     return { success: false, error: 'El cierre de hoy ya fue realizado' }
   }
 
-  const insertData = {
+  var insertData = {
     fecha: fechaHoy,
     total_usd: resumen.totalUSD || 0,
     total_eur: resumen.totalEUR || 0,
@@ -86,38 +89,38 @@ export const cerrarDia = async (usuarioId, resumen, gymId = null) => {
 
   if (gymId) insertData.gym_id = gymId
 
-  const { error } = await supabase.from('cierres_caja').insert(insertData)
+  var insertResult = await supabase.from('cierres_caja').insert(insertData)
 
-  if (error) {
-    console.error(error)
-    return { success: false, error: error.message }
+  if (insertResult.error) {
+    console.error(insertResult.error)
+    return { success: false, error: insertResult.error.message }
   }
 
   return { success: true }
 }
 
-export const obtenerCierrePorFecha = async (fecha, gymId = null) => {
-  let query = supabase
+export var obtenerCierrePorFecha = async function(fecha, gymId) {
+  var query = supabase
     .from('cierres_caja')
     .select('*')
     .eq('fecha', fecha)
 
   if (gymId) query = query.eq('gym_id', gymId)
 
-  const { data, error } = await query.maybeSingle()
+  var result = await query.maybeSingle()
 
-  if (error) return { success: false, error: error.message }
-  if (!data) return { success: false, error: 'No hay cierre guardado ese día' }
+  if (result.error) return { success: false, error: result.error.message }
+  if (!result.data) return { success: false, error: 'No hay cierre guardado ese día' }
 
-  return { success: true, data }
+  return { success: true, data: result.data }
 }
 
-export const obtenerCierresPorRango = async (desde, hasta, gymId = null) => {
+export var obtenerCierresPorRango = async function(desde, hasta, gymId) {
   if (!desde || !hasta) {
     return { success: false, error: 'Rango de fechas inválido' }
   }
 
-  let query = supabase
+  var query = supabase
     .from('cierres_caja')
     .select('*')
     .gte('fecha', desde)
@@ -126,12 +129,12 @@ export const obtenerCierresPorRango = async (desde, hasta, gymId = null) => {
 
   if (gymId) query = query.eq('gym_id', gymId)
 
-  const { data, error } = await query
+  var result = await query
 
-  if (error) {
-    console.error(error)
-    return { success: false, error: error.message }
+  if (result.error) {
+    console.error(result.error)
+    return { success: false, error: result.error.message }
   }
 
-  return { success: true, data: data || [] }
+  return { success: true, data: result.data || [] }
 }

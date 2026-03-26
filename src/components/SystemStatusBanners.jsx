@@ -1,7 +1,7 @@
 import { useAuth } from '../context/AuthContext'
-import { useDesktopUpdateNotice } from '../hooks/useDesktopUpdateNotice'
+import UpdatePanel from './UpdatePanel'
 
-const toneStyles = {
+var toneStyles = {
   info: {
     background: 'rgba(59,130,246,0.08)',
     border: 'rgba(59,130,246,0.18)',
@@ -18,15 +18,20 @@ const toneStyles = {
   },
 }
 
-function NoticeCard({ title, message, tone = 'info', actions = null, notes = [] }) {
-  const palette = toneStyles[tone] || toneStyles.info
+function NoticeCard(props) {
+  var title = props.title
+  var message = props.message
+  var tone = props.tone || 'info'
+  var actions = props.actions || null
+  var notes = props.notes || []
+  var palette = toneStyles[tone] || toneStyles.info
 
   return (
     <div
       className="rounded-2xl px-5 py-4"
       style={{
         background: palette.background,
-        border: `1px solid ${palette.border}`,
+        border: '1px solid ' + palette.border,
       }}
     >
       <div className="flex items-start justify-between gap-4">
@@ -35,19 +40,21 @@ function NoticeCard({ title, message, tone = 'info', actions = null, notes = [] 
           <p className="text-sm leading-6" style={{ color: palette.text }}>{message}</p>
           {notes.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {notes.slice(0, 3).map((note) => (
-                <span
-                  key={note}
-                  className="text-xs px-2.5 py-1 rounded-full"
-                  style={{
-                    color: palette.title,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.07)',
-                  }}
-                >
-                  {note}
-                </span>
-              ))}
+              {notes.slice(0, 3).map(function (note) {
+                return (
+                  <span
+                    key={note}
+                    className="text-xs px-2.5 py-1 rounded-full"
+                    style={{
+                      color: palette.title,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                    }}
+                  >
+                    {note}
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>
@@ -58,10 +65,11 @@ function NoticeCard({ title, message, tone = 'info', actions = null, notes = [] 
 }
 
 export default function SystemStatusBanners() {
-  const { commercialNotice, isSuperAdmin } = useAuth()
-  const { updateNotice, dismissUpdateNotice, openUpdateDownload } = useDesktopUpdateNotice()
+  var auth = useAuth()
+  var commercialNotice = auth.commercialNotice
+  var isSuperAdmin = auth.isSuperAdmin
 
-  const notices = []
+  var notices = []
 
   if (!isSuperAdmin && commercialNotice) {
     notices.push(
@@ -74,45 +82,14 @@ export default function SystemStatusBanners() {
     )
   }
 
-  if (updateNotice) {
-    notices.push(
-      <NoticeCard
-        key="update"
-        title={updateNotice.title}
-        message={`${updateNotice.message} Version actual: ${updateNotice.currentVersion}. Version disponible: ${updateNotice.availableVersion}.`}
-        tone={updateNotice.required ? 'warning' : 'info'}
-        notes={updateNotice.notes}
-        actions={(
-          <div className="flex gap-2 shrink-0">
-            {updateNotice.downloadUrl && (
-              <button
-                onClick={openUpdateDownload}
-                className="px-3 py-2 rounded-xl text-sm font-medium text-white"
-                style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}
-              >
-                Descargar
-              </button>
-            )}
-            {!updateNotice.required && (
-              <button
-                onClick={dismissUpdateNotice}
-                className="px-3 py-2 rounded-xl text-sm font-medium text-gray-300"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                Luego
-              </button>
-            )}
-          </div>
-        )}
-      />
-    )
-  }
-
-  if (notices.length === 0) return null
-
   return (
-    <div className="px-6 pt-5 space-y-3">
-      {notices}
+    <div>
+      <UpdatePanel />
+      {notices.length > 0 && (
+        <div className="px-6 pt-4 space-y-3">
+          {notices}
+        </div>
+      )}
     </div>
   )
 }

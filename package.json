@@ -2,17 +2,22 @@
   "name": "gymcontrol-desktop",
   "version": "2.1.0",
   "description": "GymControl by YM Solutions",
+  "author": {
+    "name": "YM Solutions",
+    "email": "contacto@ymsolutions.online"
+  },
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
     "build": "vite build",
-    "dist": "vite build && electron-builder --win"
+    "dist": "vite build && electron-builder --win --publish never",
+    "dist:publish": "vite build && electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.ymsolutions.gymcontrol",
     "productName": "GymControl",
-    "copyright": "Copyright © 2026 YM Solutions. Todos los derechos reservados.",
+    "copyright": "Copyright © 2025 YM Solutions. Todos los derechos reservados.",
     "directories": {
       "output": "release"
     },
@@ -34,10 +39,17 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "GymControl"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "YMSolutionsVE",
+      "repo": "gymcontrol-desktop",
+      "private": true
     }
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
+    "electron-updater": "^6.3.9",
     "exceljs": "^4.4.0",
     "jspdf": "^4.1.0",
     "jspdf-autotable": "^5.0.7",
@@ -53,7 +65,6 @@
     "concurrently": "^8.2.0",
     "electron": "^28.0.0",
     "electron-builder": "^25.1.8",
-    "png2icons": "^0.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "vite": "^5.0.0",

@@ -4,6 +4,33 @@ import {
   CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null
+  return (
+    <div
+      className="rounded-xl p-3 shadow-xl text-sm"
+      style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      <p className="text-gray-400 mb-2 font-medium">{label}</p>
+      {payload.map(function(entry) {
+        var formatted = ''
+        if (entry.dataKey === 'usd') {
+          formatted = '$' + entry.value.toFixed(2)
+        } else if (entry.dataKey === 'eur') {
+          formatted = '€' + entry.value.toFixed(2)
+        } else {
+          formatted = 'Bs. ' + entry.value.toFixed(2)
+        }
+        return (
+          <p key={entry.dataKey} style={{ color: entry.color }} className="font-semibold">
+            {entry.name + ': ' + formatted}
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function GraficoIngresos({ datos }) {
   if (!datos || datos.length === 0) {
     return (
@@ -19,33 +46,9 @@ export default function GraficoIngresos({ datos }) {
     )
   }
 
-  // Detectar qué monedas tienen datos reales para no mostrar líneas vacías
-  const tieneUSD = datos.some(d => (d.usd || 0) > 0)
-  const tieneEUR = datos.some(d => (d.eur || 0) > 0)
-  const tieneBS  = datos.some(d => (d.bs  || 0) > 0)
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (!active || !payload || !payload.length) return null
-    return (
-      <div
-        className="rounded-xl p-3 shadow-xl text-sm"
-        style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        <p className="text-gray-400 mb-2 font-medium">{label}</p>
-        {payload.map(entry => (
-          <p key={entry.dataKey} style={{ color: entry.color }} className="font-semibold">
-            {entry.name}: {
-              entry.dataKey === 'usd' ? `
-$$
-{entry.value.toFixed(2)}` :
-              entry.dataKey === 'eur' ? `€${entry.value.toFixed(2)}` :
-              `Bs. ${entry.value.toFixed(2)}`
-            }
-          </p>
-        ))}
-      </div>
-    )
-  }
+  var tieneUSD = datos.some(function(d) { return (d.usd || 0) > 0 })
+  var tieneEUR = datos.some(function(d) { return (d.eur || 0) > 0 })
+  var tieneBS  = datos.some(function(d) { return (d.bs  || 0) > 0 })
 
   return (
     <div

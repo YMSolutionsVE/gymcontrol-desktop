@@ -3,21 +3,21 @@ import { formatMoney, getCurrencyBadge } from '../../lib/currencyUtils'
 
 function VariacionBadge({ valor }) {
   if (valor === null || valor === undefined) return null
-  const num = parseFloat(valor)
-  const positivo = num >= 0
+  var num = parseFloat(valor)
+  var positivo = num >= 0
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
+    <span className={'inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ' + (
       positivo
         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
         : 'bg-red-500/10 text-red-400 border border-red-500/20'
-    }`}>
+    )}>
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
         {positivo
           ? <polyline points="18 15 12 9 6 15" />
           : <polyline points="6 9 12 15 18 9" />
         }
       </svg>
-      {positivo ? '+' : ''}{valor}%
+      {(positivo ? '+' : '') + valor + '%'}
     </span>
   )
 }
@@ -25,19 +25,23 @@ function VariacionBadge({ valor }) {
 export default function MetricasResumen({
   totalUSD, totalBS, totalAsistencias,
   totalEUR,
+  totalDescuentos,
+  cantidadDescuentos,
+  descuentosPorMoneda,
   periodoLabel,
   variacionUSD, variacionBS, variacionAsistencias,
 }) {
-  const tieneUSD = totalUSD > 0
-  const tieneEUR = (totalEUR || 0) > 0
+  var tieneUSD = totalUSD > 0
+  var tieneEUR = (totalEUR || 0) > 0
+  var tieneDescuentos = (totalDescuentos || 0) > 0
+  var descMonedas = descuentosPorMoneda || {}
 
-  const cards = []
+  var cards = []
 
-  // Solo mostrar USD si hay movimiento
   if (tieneUSD) {
     cards.push({
       title: 'Total USD',
-      value: `$${formatMoney(totalUSD)}`,
+      value: '$' + formatMoney(totalUSD),
       subtitle: 'Ingresos en dólares',
       border: 'from-emerald-500 to-emerald-600',
       text: 'text-emerald-400',
@@ -52,11 +56,10 @@ export default function MetricasResumen({
     })
   }
 
-  // Solo mostrar EUR si hay movimiento
   if (tieneEUR) {
     cards.push({
       title: 'Total EUR',
-      value: `€${formatMoney(totalEUR)}`,
+      value: '€' + formatMoney(totalEUR),
       subtitle: 'Ingresos en euros',
       border: 'from-blue-500 to-blue-600',
       text: 'text-blue-400',
@@ -72,10 +75,9 @@ export default function MetricasResumen({
     })
   }
 
-  // Bs siempre se muestra
   cards.push({
     title: 'Total Bs',
-    value: `Bs ${formatMoney(totalBS)}`,
+    value: 'Bs ' + formatMoney(totalBS),
     subtitle: 'Ingresos en bolívares',
     border: 'from-green-500 to-green-600',
     text: 'text-green-400',
@@ -89,7 +91,6 @@ export default function MetricasResumen({
     ),
   })
 
-  // Asistencias siempre se muestra
   cards.push({
     title: 'Asistencias',
     value: totalAsistencias,
@@ -108,8 +109,34 @@ export default function MetricasResumen({
     ),
   })
 
-  // Grid dinámico según cantidad de cards
-  const gridCols = cards.length <= 3 ? 'md:grid-cols-3' : 'md:grid-cols-4'
+  if (tieneDescuentos) {
+    // Armar subtitle con desglose por moneda
+    var subtitleParts = []
+    Object.keys(descMonedas).forEach(function(mon) {
+      subtitleParts.push(getCurrencyBadge(mon) + ' ' + formatMoney(descMonedas[mon]))
+    })
+    var subtitleDesc = subtitleParts.length > 0
+      ? subtitleParts.join(' · ')
+      : 'En el período'
+
+    cards.push({
+      title: 'Descuentos',
+      value: (cantidadDescuentos || 0) + ' pagos',
+      subtitle: subtitleDesc,
+      border: 'from-amber-500 to-amber-600',
+      text: 'text-amber-400',
+      iconBg: 'bg-amber-500/10 text-amber-400',
+      variacion: null,
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
+        </svg>
+      ),
+    })
+  }
+
+  var gridCols = cards.length <= 3 ? 'md:grid-cols-3' : cards.length === 4 ? 'md:grid-cols-4' : 'md:grid-cols-5'
 
   return (
     <div className="mb-6">
@@ -126,26 +153,28 @@ export default function MetricasResumen({
         </div>
       )}
 
-      <div className={`grid grid-cols-1 ${gridCols} gap-4`}>
-        {cards.map((c) => (
-          <div
-            key={c.title}
-            className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#0D1117] hover:bg-[#111827] transition-all duration-300 p-5"
-          >
-            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${c.border} rounded-l-xl`} />
-            <div className="flex items-start justify-between pl-2">
-              <div>
-                <p className="text-gray-400/80 text-xs font-medium uppercase tracking-wide mb-2">{c.title}</p>
-                <div className="flex items-center gap-2">
-                  <p className={`text-3xl font-bold ${c.text} tabular-nums`}>{c.value}</p>
-                  <VariacionBadge valor={c.variacion} />
+      <div className={'grid grid-cols-1 ' + gridCols + ' gap-4'}>
+        {cards.map(function(c) {
+          return (
+            <div
+              key={c.title}
+              className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#0D1117] hover:bg-[#111827] transition-all duration-300 p-5"
+            >
+              <div className={'absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ' + c.border + ' rounded-l-xl'} />
+              <div className="flex items-start justify-between pl-2">
+                <div>
+                  <p className="text-gray-400/80 text-xs font-medium uppercase tracking-wide mb-2">{c.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className={'text-3xl font-bold ' + c.text + ' tabular-nums'}>{c.value}</p>
+                    <VariacionBadge valor={c.variacion} />
+                  </div>
+                  <p className="text-gray-500 text-xs mt-1.5">{c.subtitle}</p>
                 </div>
-                <p className="text-gray-500 text-xs mt-1.5">{c.subtitle}</p>
+                <div className={c.iconBg + ' p-2 rounded-lg'}>{c.icon}</div>
               </div>
-              <div className={`${c.iconBg} p-2 rounded-lg`}>{c.icon}</div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

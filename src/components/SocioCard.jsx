@@ -2,25 +2,25 @@ import React, { useState, useRef, useEffect } from 'react'
 import StatusBadge from './StatusBadge'
 
 export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete, onVerMiembro, onAccesoQR, estadoPago }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
+  var [menuOpen, setMenuOpen] = useState(false)
+  var menuRef = useRef(null)
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
+  useEffect(function() {
+    var handleClickOutside = function(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    return function() { document.removeEventListener('mousedown', handleClickOutside) }
   }, [])
 
-  const irAlPerfil = () => {
+  var irAlPerfil = function() {
     if (onVerMiembro) onVerMiembro(socio.id)
   }
 
-  const esPlanSesiones = socio.sesiones_total !== null && socio.sesiones_total !== undefined
-  let sesionesBadgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+  var esPlanSesiones = socio.sesiones_total !== null && socio.sesiones_total !== undefined
+  var sesionesBadgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20'
   if (esPlanSesiones && socio.sesiones_restantes <= 0) sesionesBadgeClass = 'bg-red-500/10 text-red-400 border-red-500/20'
   else if (esPlanSesiones && socio.sesiones_restantes <= 2) sesionesBadgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/20'
 
@@ -34,11 +34,16 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
         <div className="flex items-center gap-2.5 mb-1.5">
           <p className="text-white font-semibold text-[15px] truncate">{socio.nombre}</p>
           {esPlanSesiones ? (
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${sesionesBadgeClass}`}>
-              {socio.sesiones_restantes <= 0 ? 'Sesiones agotadas' : `${socio.sesiones_restantes}/${socio.sesiones_total} ses.`}
+            <span className={'px-2 py-0.5 rounded-full text-[10px] font-medium border ' + sesionesBadgeClass}>
+              {socio.sesiones_restantes <= 0 ? 'Sesiones agotadas' : socio.sesiones_restantes + '/' + socio.sesiones_total + ' ses.'}
             </span>
           ) : (
-            <StatusBadge fechaVencimiento={socio.fecha_vencimiento} />
+            <StatusBadge
+              fechaVencimiento={socio.fecha_vencimiento}
+              sesionesTotal={socio.sesiones_total}
+              sesionesRestantes={socio.sesiones_restantes}
+              planActual={socio.plan_actual}
+            />
           )}
           {socio.es_cortesia && (
             <span className="bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium">
@@ -79,31 +84,33 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
           <span className="text-gray-600">·</span>
           {socio.sesiones_total !== null && socio.sesiones_total !== undefined ? (
             <span className={socio.sesiones_restantes <= 0 ? 'text-red-400/80' : socio.sesiones_restantes <= 2 ? 'text-amber-400/80' : ''}>
-              {socio.sesiones_restantes}/{socio.sesiones_total} sesiones
+              {socio.sesiones_restantes + '/' + socio.sesiones_total + ' sesiones'}
             </span>
           ) : (
-            <span>Vence: {socio.fecha_vencimiento || '—'}</span>
+            <span>{'Vence: ' + (socio.fecha_vencimiento || '—')}</span>
           )}
         </div>
 
         {/* Días de asistencia */}
-        {esPlanSesiones && socio.dias_semana?.length > 0 && (
+        {esPlanSesiones && socio.dias_semana && socio.dias_semana.length > 0 && (
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 shrink-0">
               <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
             </svg>
-            {socio.dias_semana.map(dia => (
-              <span key={dia} className="px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
-                style={{ background: 'rgba(59,130,246,0.08)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.15)' }}>
-                {dia.charAt(0).toUpperCase() + dia.slice(1)}
-              </span>
-            ))}
+            {socio.dias_semana.map(function(dia) {
+              return (
+                <span key={dia} className="px-1.5 py-0.5 rounded text-[10px] font-medium capitalize"
+                  style={{ background: 'rgba(59,130,246,0.08)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.15)' }}>
+                  {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                </span>
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 ml-4 shrink-0" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-2 ml-4 shrink-0" onClick={function(e) { e.stopPropagation() }}>
         {/* Payment status */}
         {estadoPago === 'pendiente' && (
           <span className="px-3 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-medium flex items-center gap-1.5">
@@ -125,7 +132,7 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
 
         {estadoPago === 'sin_pago' && onPay && (
           <button
-            onClick={() => onPay(socio)}
+            onClick={function() { onPay(socio) }}
             className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -135,10 +142,10 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
           </button>
         )}
 
-        {/* ⋯ Menu */}
+        {/* Menu */}
         <div className="relative" ref={menuRef}>
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={function() { setMenuOpen(!menuOpen) }}
             className="p-2 rounded-lg hover:bg-white/[0.06] text-gray-500 hover:text-gray-300 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -151,7 +158,7 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
           {menuOpen && (
             <div className="absolute right-0 top-full mt-1 w-48 bg-[#1A1F2E] border border-white/[0.08] rounded-xl shadow-xl shadow-black/40 z-50 py-1 overflow-hidden">
               <button
-                onClick={() => { onEdit(socio); setMenuOpen(false) }}
+                onClick={function() { onEdit(socio); setMenuOpen(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -160,9 +167,8 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
                 Editar
               </button>
 
-              {/* Acceso QR */}
               <button
-                onClick={() => { onAccesoQR?.(socio); setMenuOpen(false) }}
+                onClick={function() { if (onAccesoQR) onAccesoQR(socio); setMenuOpen(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-blue-400 hover:bg-blue-500/10 flex items-center gap-2.5 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -175,7 +181,7 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
               </button>
 
               <button
-                onClick={() => { onDeactivate(socio); setMenuOpen(false) }}
+                onClick={function() { onDeactivate(socio); setMenuOpen(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -185,7 +191,7 @@ export default function SocioCard({ socio, onEdit, onDeactivate, onPay, onDelete
               </button>
               <div className="border-t border-white/[0.06] my-1" />
               <button
-                onClick={() => { onDelete(socio); setMenuOpen(false) }}
+                onClick={function() { onDelete(socio); setMenuOpen(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2.5 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

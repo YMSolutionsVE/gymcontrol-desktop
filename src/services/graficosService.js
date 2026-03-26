@@ -1,8 +1,8 @@
 import { supabase } from '../config/supabase'
 
-export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) => {
+export var getIngresosPorRango = async function(fechaInicio, fechaFin, gymId) {
   try {
-    let query = supabase
+    var query = supabase
       .from('cierres_caja')
       .select('fecha, total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
@@ -11,18 +11,20 @@ export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) =
 
     if (gymId) query = query.eq('gym_id', gymId)
 
-    const { data, error } = await query
+    var result = await query
 
-    if (error) throw error
+    if (result.error) throw result.error
 
     return {
       success: true,
-      data: data.map(d => ({
-        fecha: d.fecha,
-        usd: Number(d.total_usd) || 0,
-        eur: Number(d.total_eur) || 0,
-        bs: Number(d.total_bs) || 0
-      }))
+      data: result.data.map(function(d) {
+        return {
+          fecha: d.fecha,
+          usd: Number(d.total_usd) || 0,
+          eur: Number(d.total_eur) || 0,
+          bs: Number(d.total_bs) || 0
+        }
+      })
     }
   } catch (error) {
     console.error('Error obteniendo ingresos:', error)
@@ -30,12 +32,12 @@ export const getIngresosPorRango = async (fechaInicio, fechaFin, gymId = null) =
   }
 }
 
-export const getAsistenciasPorRango = async (fechaInicio, fechaFin, gymId = null) => {
+export var getAsistenciasPorRango = async function(fechaInicio, fechaFin, gymId) {
   try {
-    const inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
-    const fin = new Date(fechaFin + 'T23:59:59').toISOString()
+    var inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
+    var fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    let query = supabase
+    var query = supabase
       .from('asistencias')
       .select('fecha_hora')
       .gte('fecha_hora', inicio)
@@ -43,20 +45,19 @@ export const getAsistenciasPorRango = async (fechaInicio, fechaFin, gymId = null
 
     if (gymId) query = query.eq('gym_id', gymId)
 
-    const { data, error } = await query
+    var result = await query
 
-    if (error) throw error
+    if (result.error) throw result.error
 
-    const agrupado = {}
-    data.forEach(a => {
-      const fecha = a.fecha_hora.split('T')[0]
+    var agrupado = {}
+    result.data.forEach(function(a) {
+      var fecha = a.fecha_hora.split('T')[0]
       agrupado[fecha] = (agrupado[fecha] || 0) + 1
     })
 
-    const resultado = Object.entries(agrupado).map(([fecha, cantidad]) => ({
-      fecha,
-      cantidad
-    })).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    var resultado = Object.entries(agrupado).map(function(entry) {
+      return { fecha: entry[0], cantidad: entry[1] }
+    }).sort(function(a, b) { return a.fecha.localeCompare(b.fecha) })
 
     return { success: true, data: resultado }
   } catch (error) {
@@ -65,9 +66,9 @@ export const getAsistenciasPorRango = async (fechaInicio, fechaFin, gymId = null
   }
 }
 
-export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) => {
+export var getMetricasResumen = async function(fechaInicio, fechaFin, gymId) {
   try {
-    let cierresQuery = supabase
+    var cierresQuery = supabase
       .from('cierres_caja')
       .select('total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
@@ -75,18 +76,19 @@ export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) =>
 
     if (gymId) cierresQuery = cierresQuery.eq('gym_id', gymId)
 
-    const { data: cierres, error: cierresError } = await cierresQuery
+    var cierresResult = await cierresQuery
 
-    if (cierresError) throw cierresError
+    if (cierresResult.error) throw cierresResult.error
 
-    const totalUSD = cierres.reduce((sum, c) => sum + Number(c.total_usd || 0), 0)
-    const totalEUR = cierres.reduce((sum, c) => sum + Number(c.total_eur || 0), 0)
-    const totalBS = cierres.reduce((sum, c) => sum + Number(c.total_bs || 0), 0)
+    var cierres = cierresResult.data
+    var totalUSD = cierres.reduce(function(sum, c) { return sum + (Number(c.total_usd) || 0) }, 0)
+    var totalEUR = cierres.reduce(function(sum, c) { return sum + (Number(c.total_eur) || 0) }, 0)
+    var totalBS = cierres.reduce(function(sum, c) { return sum + (Number(c.total_bs) || 0) }, 0)
 
-    const inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
-    const fin = new Date(fechaFin + 'T23:59:59').toISOString()
+    var inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
+    var fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    let asistQuery = supabase
+    var asistQuery = supabase
       .from('asistencias')
       .select('*', { count: 'exact', head: true })
       .gte('fecha_hora', inicio)
@@ -94,20 +96,64 @@ export const getMetricasResumen = async (fechaInicio, fechaFin, gymId = null) =>
 
     if (gymId) asistQuery = asistQuery.eq('gym_id', gymId)
 
-    const { count, error: asistenciasError } = await asistQuery
+    var asistResult = await asistQuery
 
-    if (asistenciasError) throw asistenciasError
+    if (asistResult.error) throw asistResult.error
+
+    // Descuentos del período — directo de pagos
+    var descuentosQuery = supabase
+      .from('pagos')
+      .select('descuento, moneda_divisa')
+      .gte('fecha_pago', inicio)
+      .lte('fecha_pago', fin)
+      .gt('descuento', 0)
+
+    if (gymId) descuentosQuery = descuentosQuery.eq('gym_id', gymId)
+
+    var descResult = await descuentosQuery
+
+    var totalDescuentos = 0
+    var cantidadDescuentos = 0
+    var descuentosPorMoneda = {}
+
+    if (!descResult.error && descResult.data) {
+      descResult.data.forEach(function(p) {
+        var desc = Number(p.descuento) || 0
+        if (desc > 0) {
+          totalDescuentos += desc
+          cantidadDescuentos++
+          var mon = (p.moneda_divisa || 'USD').toUpperCase()
+          descuentosPorMoneda[mon] = (descuentosPorMoneda[mon] || 0) + desc
+        }
+      })
+    }
 
     return {
       success: true,
-      data: { totalUSD, totalEUR, totalBS, totalAsistencias: count || 0 }
+      data: {
+        totalUSD: totalUSD,
+        totalEUR: totalEUR,
+        totalBS: totalBS,
+        totalAsistencias: asistResult.count || 0,
+        totalDescuentos: totalDescuentos,
+        cantidadDescuentos: cantidadDescuentos,
+        descuentosPorMoneda: descuentosPorMoneda
+      }
     }
   } catch (error) {
     console.error('Error obteniendo métricas:', error)
     return {
       success: false,
       error: error.message,
-      data: { totalUSD: 0, totalEUR: 0, totalBS: 0, totalAsistencias: 0 }
+      data: {
+        totalUSD: 0,
+        totalEUR: 0,
+        totalBS: 0,
+        totalAsistencias: 0,
+        totalDescuentos: 0,
+        cantidadDescuentos: 0,
+        descuentosPorMoneda: {}
+      }
     }
   }
 }
