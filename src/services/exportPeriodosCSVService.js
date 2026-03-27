@@ -86,20 +86,18 @@ const descargarWorkbook = async (workbook, nombreArchivo) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nombreGimnasio = 'GymControl') => {
+export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId, nombreGimnasio = 'GymControl') => {
+  if (!gymId) throw new Error('gym_id es requerido para exportar')
   const { desde, hasta } = calcularRangoPeriodo(periodoRaw)
   const nombreSlug = nombreGimnasio.toLowerCase().replace(/\s+/g, '_')
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('cierres_caja')
     .select('fecha,total_usd,total_eur,total_bs,asistencias')
     .gte('fecha', desde)
     .lte('fecha', hasta)
+    .eq('gym_id', gymId)
     .order('fecha', { ascending: true })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  const { data, error } = await query
 
   if (error) { console.error(error); throw new Error('Error obteniendo cierres') }
   if (!data || data.length === 0) throw new Error('No hay datos para exportar')
@@ -199,18 +197,16 @@ export const exportarCierresPorPeriodoCSV = async (periodoRaw, gymId = null, nom
   await descargarWorkbook(wb, `${nombreSlug}_cierres_${desde}_a_${hasta}.xlsx`)
 }
 
-export const exportarMiembrosXLSX = async (gymId = null, nombreGimnasio = 'GymControl') => {
+export const exportarMiembrosXLSX = async (gymId, nombreGimnasio = 'GymControl') => {
+  if (!gymId) throw new Error('gym_id es requerido para exportar')
   const nombreSlug = nombreGimnasio.toLowerCase().replace(/\s+/g, '_')
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('socios')
     .select('nombre,cedula,telefono,plan_actual,fecha_vencimiento,activo')
     .eq('activo', true)
+    .eq('gym_id', gymId)
     .order('nombre', { ascending: true })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  const { data, error } = await query
 
   if (error) throw new Error('Error obteniendo miembros')
   if (!data || data.length === 0) throw new Error('No hay miembros para exportar')
@@ -284,22 +280,20 @@ export const exportarMiembrosXLSX = async (gymId = null, nombreGimnasio = 'GymCo
   await descargarWorkbook(wb, `${nombreSlug}_miembros_${new Date().toISOString().split('T')[0]}.xlsx`)
 }
 
-export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'GymControl') => {
+export const exportarPagosDelDiaXLSX = async (gymId, nombreGimnasio = 'GymControl') => {
+  if (!gymId) throw new Error('gym_id es requerido para exportar')
   const nombreSlug = nombreGimnasio.toLowerCase().replace(/\s+/g, '_')
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
   const inicio = new Date(hoy + 'T00:00:00').toISOString()
   const fin = new Date(hoy + 'T23:59:59').toISOString()
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('pagos')
     .select('monto_usd,monto_bs,monto_divisa,moneda_divisa,metodo,referencia,fecha_pago,socios(nombre,cedula)')
     .gte('fecha_pago', inicio)
     .lte('fecha_pago', fin)
+    .eq('gym_id', gymId)
     .order('fecha_pago', { ascending: false })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  const { data, error } = await query
 
   if (error) throw new Error('Error obteniendo pagos')
   if (!data || data.length === 0) throw new Error('No hay pagos hoy para exportar')
@@ -389,22 +383,20 @@ export const exportarPagosDelDiaXLSX = async (gymId = null, nombreGimnasio = 'Gy
   await descargarWorkbook(wb, `${nombreSlug}_pagos_${hoy}.xlsx`)
 }
 
-export const exportarAsistenciasDelDiaXLSX = async (gymId = null, nombreGimnasio = 'GymControl') => {
+export const exportarAsistenciasDelDiaXLSX = async (gymId, nombreGimnasio = 'GymControl') => {
+  if (!gymId) throw new Error('gym_id es requerido para exportar')
   const nombreSlug = nombreGimnasio.toLowerCase().replace(/\s+/g, '_')
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
   const inicio = new Date(hoy + 'T00:00:00').toISOString()
   const fin = new Date(hoy + 'T23:59:59').toISOString()
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('asistencias')
     .select('fecha_hora,socios(nombre,cedula,plan_actual)')
     .gte('fecha_hora', inicio)
     .lte('fecha_hora', fin)
+    .eq('gym_id', gymId)
     .order('fecha_hora', { ascending: false })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  const { data, error } = await query
 
   if (error) throw new Error('Error obteniendo asistencias')
   if (!data || data.length === 0) throw new Error('No hay asistencias hoy para exportar')

@@ -1,6 +1,14 @@
 import { supabase } from '../config/supabase'
 import { calcularTotalesMultiMoneda } from '../lib/currencyUtils'
 
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('cierreCajaService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
 var obtenerFechaLocal = function() {
   var ahora = new Date()
   var offset = ahora.getTimezoneOffset()
@@ -9,6 +17,8 @@ var obtenerFechaLocal = function() {
 }
 
 export var obtenerResumenHoy = async function(gymId) {
+  if (!validarGymId(gymId)) return null
+
   var fechaHoy = obtenerFechaLocal()
   var inicio = new Date(fechaHoy + 'T00:00:00')
   var fin = new Date(fechaHoy + 'T23:59:59')
@@ -18,8 +28,7 @@ export var obtenerResumenHoy = async function(gymId) {
     .select('id, monto_usd, monto_bs, moneda_divisa, monto_divisa, metodo, referencia, descuento, motivo_descuento, tasa_aplicada, socios (nombre, cedula)')
     .gte('fecha_pago', inicio.toISOString())
     .lte('fecha_pago', fin.toISOString())
-
-  if (gymId) pagosQuery = pagosQuery.eq('gym_id', gymId)
+    .eq('gym_id', gymId)
 
   var pagosResult = await pagosQuery
 
@@ -35,8 +44,7 @@ export var obtenerResumenHoy = async function(gymId) {
     .select('*', { count: 'exact', head: true })
     .gte('fecha_hora', inicio.toISOString())
     .lte('fecha_hora', fin.toISOString())
-
-  if (gymId) asistQuery = asistQuery.eq('gym_id', gymId)
+    .eq('gym_id', gymId)
 
   var asistResult = await asistQuery
   var asistencias = asistResult.count || 0
@@ -61,16 +69,16 @@ export var obtenerResumenHoy = async function(gymId) {
 }
 
 export var cerrarDia = async function(usuarioId, resumen, gymId) {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
+
   var fechaHoy = obtenerFechaLocal()
 
-  var existeQuery = supabase
+  var existeResult = await supabase
     .from('cierres_caja')
     .select('id')
     .eq('fecha', fechaHoy)
-
-  if (gymId) existeQuery = existeQuery.eq('gym_id', gymId)
-
-  var existeResult = await existeQuery.maybeSingle()
+    .eq('gym_id', gymId)
+    .maybeSingle()
 
   if (existeResult.data) {
     return { success: false, error: 'El cierre de hoy ya fue realizado' }
@@ -84,10 +92,9 @@ export var cerrarDia = async function(usuarioId, resumen, gymId) {
     asistencias: resumen.asistencias,
     detalle_metodos: resumen.detalle_metodos,
     detalle_pagos: resumen.detalle_pagos,
-    cerrado_por: usuarioId
+    cerrado_por: usuarioId,
+    gym_id: gymId
   }
-
-  if (gymId) insertData.gym_id = gymId
 
   var insertResult = await supabase.from('cierres_caja').insert(insertData)
 
@@ -100,14 +107,14 @@ export var cerrarDia = async function(usuarioId, resumen, gymId) {
 }
 
 export var obtenerCierrePorFecha = async function(fecha, gymId) {
-  var query = supabase
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
+
+  var result = await supabase
     .from('cierres_caja')
     .select('*')
     .eq('fecha', fecha)
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  var result = await query.maybeSingle()
+    .eq('gym_id', gymId)
+    .maybeSingle()
 
   if (result.error) return { success: false, error: result.error.message }
   if (!result.data) return { success: false, error: 'No hay cierre guardado ese día' }
@@ -116,20 +123,18 @@ export var obtenerCierrePorFecha = async function(fecha, gymId) {
 }
 
 export var obtenerCierresPorRango = async function(desde, hasta, gymId) {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
   if (!desde || !hasta) {
     return { success: false, error: 'Rango de fechas inválido' }
   }
 
-  var query = supabase
+  var result = await supabase
     .from('cierres_caja')
     .select('*')
     .gte('fecha', desde)
     .lte('fecha', hasta)
+    .eq('gym_id', gymId)
     .order('fecha', { ascending: true })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  var result = await query
 
   if (result.error) {
     console.error(result.error)

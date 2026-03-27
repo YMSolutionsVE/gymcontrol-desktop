@@ -1,17 +1,23 @@
 import { supabase } from '../config/supabase'
 
-export const getResumenDiario = async (desde, hasta, gymId = null) => {
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('reportesService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
+export const getResumenDiario = async (desde, hasta, gymId) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('cierres_caja')
       .select('fecha, total_usd, total_bs, asistencias')
       .gte('fecha', desde)
       .lte('fecha', hasta)
+      .eq('gym_id', gymId)
       .order('fecha', { ascending: true })
-
-    if (gymId) query = query.eq('gym_id', gymId)
-
-    const { data, error } = await query
 
     if (error) throw error
 

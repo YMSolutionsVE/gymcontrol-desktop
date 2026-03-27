@@ -16,15 +16,23 @@ const getTasasIniciales = async () => {
   }
 }
 
-export const getConfig = async (gymId = null) => {
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('configService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
+export const getConfig = async (gymId) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
   try {
-    let query = supabase.from('configuracion').select('*')
-
-    if (gymId) {
-      query = query.eq('gym_id', gymId)
-    }
-
-    const { data, error } = await query.limit(1).maybeSingle()
+    const { data, error } = await supabase
+      .from('configuracion')
+      .select('*')
+      .eq('gym_id', gymId)
+      .limit(1)
+      .maybeSingle()
 
     if (error) return { success: false, error: error.message }
     return { success: true, data }
@@ -33,9 +41,11 @@ export const getConfig = async (gymId = null) => {
   }
 }
 
-export const updateTasasCambio = async ({ tasaBcv, tasaEur }, gymId = null) => {
+export const updateTasasCambio = async ({ tasaBcv, tasaEur }, gymId) => {
   const tasaBcvNum = parseFloat(tasaBcv)
   const tasaEurNum = parseFloat(tasaEur)
+
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
 
   if (isNaN(tasaBcvNum) || tasaBcvNum <= 0) {
     return { success: false, error: 'Ingresa una tasa USD valida mayor a 0' }
@@ -45,8 +55,7 @@ export const updateTasasCambio = async ({ tasaBcv, tasaEur }, gymId = null) => {
     return { success: false, error: 'Ingresa una tasa EUR valida mayor a 0' }
   }
 
-  let query = supabase.from('configuracion').select('id')
-  if (gymId) query = query.eq('gym_id', gymId)
+  const query = supabase.from('configuracion').select('id').eq('gym_id', gymId)
 
   const { data: config } = await query.limit(1).maybeSingle()
 
@@ -62,6 +71,7 @@ export const updateTasasCambio = async ({ tasaBcv, tasaEur }, gymId = null) => {
       updated_at: new Date().toISOString()
     })
     .eq('id', config.id)
+    .eq('gym_id', gymId)
     .select()
     .single()
 
@@ -69,7 +79,7 @@ export const updateTasasCambio = async ({ tasaBcv, tasaEur }, gymId = null) => {
   return { success: true, data }
 }
 
-export const updateTasaBcv = async (nuevaTasa, gymId = null) => {
+export const updateTasaBcv = async (nuevaTasa, gymId) => {
   const result = await getConfig(gymId)
   const tasaEurActual = result?.data?.tasa_eur || nuevaTasa
   return updateTasasCambio({

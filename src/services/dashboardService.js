@@ -1,6 +1,15 @@
 import { supabase } from '../config/supabase'
 
-export const getDashboardStats = async (gymId = null) => {
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('dashboardService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
+export const getDashboardStats = async (gymId) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
   try {
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
@@ -10,30 +19,30 @@ export const getDashboardStats = async (gymId = null) => {
 
     const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
 
-    let sociosQuery = supabase
+    const sociosQuery = supabase
       .from('socios')
       .select('id, fecha_vencimiento, activo, plan_actual, sesiones_total, sesiones_restantes')
       .eq('activo', true)
-    if (gymId) sociosQuery = sociosQuery.eq('gym_id', gymId)
+      .eq('gym_id', gymId)
 
     // Traer monto_bs como dato principal + divisa para desglose
-    let pagosHoyQuery = supabase
+    const pagosHoyQuery = supabase
       .from('pagos')
       .select('monto_bs, monto_divisa, moneda_divisa')
       .gte('fecha_pago', hoy.toISOString())
-    if (gymId) pagosHoyQuery = pagosHoyQuery.eq('gym_id', gymId)
+      .eq('gym_id', gymId)
 
-    let pagosMesQuery = supabase
+    const pagosMesQuery = supabase
       .from('pagos')
       .select('monto_bs, monto_divisa, moneda_divisa')
       .gte('fecha_pago', primerDiaMes.toISOString())
-    if (gymId) pagosMesQuery = pagosMesQuery.eq('gym_id', gymId)
+      .eq('gym_id', gymId)
 
-    let asistHoyQuery = supabase
+    const asistHoyQuery = supabase
       .from('asistencias')
       .select('id')
       .gte('fecha_hora', hoy.toISOString())
-    if (gymId) asistHoyQuery = asistHoyQuery.eq('gym_id', gymId)
+      .eq('gym_id', gymId)
 
     const [
       { data: socios, error: sociosError },

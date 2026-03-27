@@ -1,17 +1,23 @@
 import { supabase } from '../config/supabase'
 
+function validarGymId(gymId) {
+  if (!gymId) {
+    console.error('graficosService: gym_id es requerido pero llegó:', gymId)
+    return false
+  }
+  return true
+}
+
 export var getIngresosPorRango = async function(fechaInicio, fechaFin, gymId) {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido', data: [] }
   try {
-    var query = supabase
+    var result = await supabase
       .from('cierres_caja')
       .select('fecha, total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
+      .eq('gym_id', gymId)
       .order('fecha', { ascending: true })
-
-    if (gymId) query = query.eq('gym_id', gymId)
-
-    var result = await query
 
     if (result.error) throw result.error
 
@@ -33,19 +39,17 @@ export var getIngresosPorRango = async function(fechaInicio, fechaFin, gymId) {
 }
 
 export var getAsistenciasPorRango = async function(fechaInicio, fechaFin, gymId) {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido', data: [] }
   try {
     var inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
     var fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    var query = supabase
+    var result = await supabase
       .from('asistencias')
       .select('fecha_hora')
       .gte('fecha_hora', inicio)
       .lte('fecha_hora', fin)
-
-    if (gymId) query = query.eq('gym_id', gymId)
-
-    var result = await query
+      .eq('gym_id', gymId)
 
     if (result.error) throw result.error
 
@@ -67,16 +71,14 @@ export var getAsistenciasPorRango = async function(fechaInicio, fechaFin, gymId)
 }
 
 export var getMetricasResumen = async function(fechaInicio, fechaFin, gymId) {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido', data: { totalUSD: 0, totalEUR: 0, totalBS: 0, totalAsistencias: 0, totalDescuentos: 0, cantidadDescuentos: 0, descuentosPorMoneda: {} } }
   try {
-    var cierresQuery = supabase
+    var cierresResult = await supabase
       .from('cierres_caja')
       .select('total_usd, total_eur, total_bs')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
-
-    if (gymId) cierresQuery = cierresQuery.eq('gym_id', gymId)
-
-    var cierresResult = await cierresQuery
+      .eq('gym_id', gymId)
 
     if (cierresResult.error) throw cierresResult.error
 
@@ -88,29 +90,23 @@ export var getMetricasResumen = async function(fechaInicio, fechaFin, gymId) {
     var inicio = new Date(fechaInicio + 'T00:00:00').toISOString()
     var fin = new Date(fechaFin + 'T23:59:59').toISOString()
 
-    var asistQuery = supabase
+    var asistResult = await supabase
       .from('asistencias')
       .select('*', { count: 'exact', head: true })
       .gte('fecha_hora', inicio)
       .lte('fecha_hora', fin)
-
-    if (gymId) asistQuery = asistQuery.eq('gym_id', gymId)
-
-    var asistResult = await asistQuery
+      .eq('gym_id', gymId)
 
     if (asistResult.error) throw asistResult.error
 
     // Descuentos del período — directo de pagos
-    var descuentosQuery = supabase
+    var descResult = await supabase
       .from('pagos')
       .select('descuento, moneda_divisa')
       .gte('fecha_pago', inicio)
       .lte('fecha_pago', fin)
       .gt('descuento', 0)
-
-    if (gymId) descuentosQuery = descuentosQuery.eq('gym_id', gymId)
-
-    var descResult = await descuentosQuery
+      .eq('gym_id', gymId)
 
     var totalDescuentos = 0
     var cantidadDescuentos = 0

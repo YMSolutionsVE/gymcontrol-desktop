@@ -29,19 +29,17 @@ const calcularRangoPeriodo = (periodoRaw) => {
   }
 }
 
-export const exportarCierresPeriodoPDF = async (periodo, gymId = null, nombreGimnasio = 'GymControl') => {
+export const exportarCierresPeriodoPDF = async (periodo, gymId, nombreGimnasio = 'GymControl') => {
+  if (!gymId) throw new Error('gym_id es requerido para exportar')
   const { desde, hasta } = calcularRangoPeriodo(periodo)
 
-  let query = supabase
+  const { data: cierres, error } = await supabase
     .from('cierres_caja')
     .select('fecha, total_usd, total_bs, asistencias')
     .gte('fecha', desde)
     .lte('fecha', hasta)
+    .eq('gym_id', gymId)
     .order('fecha', { ascending: true })
-
-  if (gymId) query = query.eq('gym_id', gymId)
-
-  const { data: cierres, error } = await query
 
   if (error || !cierres || cierres.length === 0) {
     throw new Error('No hay datos para exportar')
