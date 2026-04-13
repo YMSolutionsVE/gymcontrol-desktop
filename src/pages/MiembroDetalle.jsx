@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useIsAdmin } from '../hooks/useIsAdmin'
 import { getSocioById, updateSocio } from '../services/sociosService'
 import { getPagosBySocio } from '../services/pagosService'
 import { getNotas, createNota, deleteNota } from '../services/notasService'
+import { registrarAsistenciaRetroactiva, eliminarAsistenciaPorFecha, getAsistenciasPorMes } from '../services/asistenciasService'
 import { supabase } from '../config/supabase'
 import { getCurrencyBadge, formatMoney } from '../lib/currencyUtils'
 import PagoForm from './PagoForm'
@@ -14,6 +15,181 @@ const BackIcon = () => (
     <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
   </svg>
 )
+
+// --- Calendario de asistencias embebido en detalle de miembro ---
+function CalendarioAsistencias({ gymId, socioId, onUpdate }) {
+  const hoy = new Date()
+  const [year, setYear] = useState(hoy.getFullYear())
+  const [month, setMonth] = useState(hoy.getMonth())
+  const [diasMarcados, setDiasMarcados] = useState(new Set())
+  const [cargando, setCargando] = useState(true)
+  const [procesando, setProcesando] = useState(null)
+
+  const cargarMes = useCallback(async () => {
+    setCargando(true)
+    const result = await getAsistenciasPorMes(gymId, socioId, year, month)
+    if (result.success) setDiasMarcados(result.data)
+    setCargando(false)
+  }, [gymId, socioId, year, month])
+
+  useEffect(() => { cargarMes() }, [cargarMes])
+
+  const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const diasSemana = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do']
+
+  const primerDia = new Date(year, month, 1)
+  const ultimoDia = new Date(year, month + 1, 0)
+  let inicioSemana = primerDia.getDay() - 1
+  if (inicioSemana < 0) inicioSemana = 6
+
+  const diasEnMes = ultimoDia.getDate()
+  const fechaHoyStr = hoy.toISOString().split('T')[0]
+
+  const handleToggleDia = async (dia) => {
+    const fecha = `${year}-${String(month + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+    if (fecha > fechaHoyStr) return
+
+    setProcesando(dia)
+
+    if (diasMarcados.has(fecha)) {
+      const result = await eliminarAsistenciaPorFecha(gymId, socioId, fecha)
+      if (result.success) {
+        setDiasMarcados(prev => {
+          const next = new Set(prev)
+          next.delete(fecha)
+          return next
+        })
+      }
+    } else {
+      const result = await registrarAsistenciaRetroactiva(gymId, socioId, fecha)
+      if (result.success) {
+        setDiasMarcados(prev => new Set([...prev, fecha]))
+      }
+    }
+
+    setProcesando(null)
+    if (onUpdate) onUpdate()
+  }
+
+  const mesAnterior = () => {
+    if (month === 0) { setMonth(11); setYear(year - 1) }
+    else setMonth(month - 1)
+  }
+
+  const mesSiguiente = () => {
+    if (year > hoy.getFullYear() || (year === hoy.getFullYear() && month >= hoy.getMonth())) return
+    if (month === 11) { setMonth(0); setYear(year + 1) }
+    else setMonth(month + 1)
+  }
+
+  const puedeSiguiente = year < hoy.getFullYear() || (year === hoy.getFullYear() && month < hoy.getMonth())
+
+  return (
+    <div
+      className="rounded-xl p-6 gc-stagger-3"
+      style={{
+        background: 'linear-gradient(145deg, #0D1117, #111827)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      {/* Header con navegacion */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Asistencias</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={mesAnterior}
+            className="p-1 rounded-lg transition-colors duration-150"
+            style={{ color: '#9ca3af' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <span className="text-white font-medium text-sm min-w-[120px] text-center">{meses[month]} {year}</span>
+          <button
+            onClick={mesSiguiente}
+            disabled={!puedeSiguiente}
+            className="p-1 rounded-lg transition-colors duration-150"
+            style={{ color: puedeSiguiente ? '#9ca3af' : '#374151', cursor: puedeSiguiente ? 'pointer' : 'not-allowed' }}
+            onMouseEnter={(e) => { if (puedeSiguiente) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        </div>
+      </div>
+
+      {cargando ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      ) : (
+        <>
+          {/* Dias de la semana */}
+          <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+            {diasSemana.map(d => (
+              <div key={d} className="text-center text-[10px] font-semibold py-1" style={{ color: '#4b5563' }}>{d}</div>
+            ))}
+          </div>
+
+          {/* Dias del mes */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {Array.from({ length: inicioSemana }).map((_, i) => <div key={'e-' + i} />)}
+            {Array.from({ length: diasEnMes }).map((_, i) => {
+              const dia = i + 1
+              const fecha = `${year}-${String(month + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+              const marcado = diasMarcados.has(fecha)
+              const esFuturo = fecha > fechaHoyStr
+              const esHoy = fecha === fechaHoyStr
+              const esProcesando = procesando === dia
+
+              return (
+                <button
+                  key={dia}
+                  disabled={esFuturo || esProcesando}
+                  onClick={() => handleToggleDia(dia)}
+                  className="aspect-square rounded-lg text-xs font-medium transition-all duration-150 flex items-center justify-center relative"
+                  style={{
+                    cursor: esFuturo ? 'not-allowed' : 'pointer',
+                    background: marcado ? 'rgba(16,185,129,0.15)' : esHoy ? 'rgba(59,130,246,0.08)' : 'transparent',
+                    border: '1px solid ' + (marcado ? 'rgba(16,185,129,0.3)' : esHoy ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)'),
+                    color: esFuturo ? '#374151' : marcado ? '#34d399' : esHoy ? '#60a5fa' : '#9ca3af',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!esFuturo && !marcado) {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = marcado ? 'rgba(16,185,129,0.15)' : esHoy ? 'rgba(59,130,246,0.08)' : 'transparent'
+                    e.currentTarget.style.borderColor = marcado ? 'rgba(16,185,129,0.3)' : esHoy ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)'
+                  }}
+                >
+                  {esProcesando ? (
+                    <div className="w-3 h-3 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      {dia}
+                      {marcado && <div className="absolute bottom-0.5 w-1 h-1 rounded-full" style={{ background: '#34d399' }} />}
+                    </>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Conteo del mes */}
+          <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+            <p className="text-xs" style={{ color: '#6b7280' }}>
+              {diasMarcados.size} asistencia{diasMarcados.size !== 1 ? 's' : ''} en {meses[month].toLowerCase()}
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function MiembroDetalle({ socioId, onVolver }) {
   const { gymId, role, user } = useAuth()
@@ -456,39 +632,8 @@ export default function MiembroDetalle({ socioId, onVolver }) {
         )}
       </div>
 
-      {/* Asistencias */}
-      <div
-        className="rounded-xl p-6 gc-stagger-3"
-        style={{
-          background: 'linear-gradient(145deg, #0D1117, #111827)',
-          border: '1px solid rgba(255,255,255,0.06)',
-        }}
-      >
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-          Asistencias recientes
-        </h2>
-        {asistencias.length === 0 ? (
-          <p className="text-gray-600 text-sm py-4 text-center">Sin asistencias registradas</p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {asistencias.slice(0, 20).map((a, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm"
-                style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.04)',
-                }}
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-400/60" />
-                <span className="text-gray-400 text-xs">
-                  {new Date(a.fecha_hora).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Asistencias — Calendario interactivo */}
+      <CalendarioAsistencias gymId={gymId} socioId={socioId} onUpdate={cargarDatos} />
     </div>
   )
 }

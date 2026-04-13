@@ -15,11 +15,8 @@ function validarGymId(gymId) {
   return true
 }
 
-// Registrar asistencia (con opcion de forzar entrada con pago pendiente)
-export const registrarAsistencia = async (gymId, socioId, opciones) => {
-  if (!opciones) opciones = {}
-  var forzarConPendiente = opciones.forzarConPendiente || false
-
+// Registrar asistencia (sin bloqueo por pago — crea pendiente automaticamente)
+export const registrarAsistencia = async (gymId, socioId) => {
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
   }
@@ -55,53 +52,52 @@ export const registrarAsistencia = async (gymId, socioId, opciones) => {
       return { success: false, error: 'Miembro inactivo' }
     }
 
+    // Determinar si necesita pago (para notificacion sutil, NO bloquea)
     var necesitaPago = false
 
     if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
       if (!socio.sesiones_restantes || socio.sesiones_restantes <= 0) {
-        if (!forzarConPendiente) {
-          return { success: false, error: 'Sesiones agotadas. Renueva el plan para continuar.', codigo: 'REQUIERE_PAGO' }
-        }
         necesitaPago = true
       }
     } else {
       if (!socio.fecha_vencimiento) {
-        if (!forzarConPendiente) {
-          return { success: false, error: 'Miembro sin plan activo', codigo: 'REQUIERE_PAGO' }
-        }
         necesitaPago = true
       } else {
         var hoy = new Date()
         hoy.setHours(0, 0, 0, 0)
         var vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
         if (vencimiento < hoy) {
-          if (!forzarConPendiente) {
-            return { success: false, error: 'Membresia vencida', codigo: 'REQUIERE_PAGO' }
-          }
           necesitaPago = true
         }
       }
     }
 
+    // Registrar asistencia SIEMPRE (sin bloqueo por pago)
     var { error: asistError } = await supabase
       .from('asistencias')
       .insert({ socio_id: socioId, gym_id: gymId })
 
     if (asistError) throw asistError
 
-    if (!necesitaPago && socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+    // Descontar sesion SIEMPRE si es plan por sesiones (haya pagado o no)
+    if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+      var nuevasUsadas = (socio.sesiones_usadas || 0) + 1
+      var nuevasRestantes = (socio.sesiones_restantes || 0) - 1
+
       var { error: updateError } = await supabase
         .from('socios')
         .update({
-          sesiones_usadas: (socio.sesiones_usadas || 0) + 1,
-          sesiones_restantes: socio.sesiones_restantes - 1
+          sesiones_usadas: nuevasUsadas,
+          sesiones_restantes: nuevasRestantes
         })
         .eq('id', socioId)
         .eq('gym_id', gymId)
       if (updateError) throw updateError
-      socio.sesiones_restantes = socio.sesiones_restantes - 1
+      socio.sesiones_usadas = nuevasUsadas
+      socio.sesiones_restantes = nuevasRestantes
     }
 
+    // Crear pago pendiente automaticamente si aplica (sin confirmacion)
     if (necesitaPago) {
       var tipoPlan = socio.plan_actual || 'Sin plan'
       var montoEsperado = 0
@@ -132,7 +128,7 @@ export const registrarAsistencia = async (gymId, socioId, opciones) => {
         .maybeSingle()
 
       if (!pendienteExistente) {
-        var { error: pendienteError } = await supabase
+        await supabase
           .from('pagos_pendientes')
           .insert({
             socio_id: socioId,
@@ -142,10 +138,6 @@ export const registrarAsistencia = async (gymId, socioId, opciones) => {
             moneda_divisa: monedaDivisa,
             confirmado: false
           })
-
-        if (pendienteError) {
-          console.error('Error creando pago pendiente:', pendienteError)
-        }
       }
     }
 
@@ -154,6 +146,147 @@ export const registrarAsistencia = async (gymId, socioId, opciones) => {
   } catch (error) {
     console.error('Error registrando asistencia:', error)
     return { success: false, error: error.message }
+  }
+}
+
+// Registrar asistencia en fecha pasada (calendario retroactivo)
+export const registrarAsistenciaRetroactiva = async (gymId, socioId, fecha) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
+  if (!fecha) return { success: false, error: 'Fecha requerida' }
+
+  try {
+    var inicio = new Date(fecha + 'T00:00:00')
+    var fin = new Date(fecha + 'T23:59:59')
+
+    var { data: existente } = await supabase
+      .from('asistencias')
+      .select('id')
+      .eq('gym_id', gymId)
+      .eq('socio_id', socioId)
+      .gte('fecha_hora', inicio.toISOString())
+      .lte('fecha_hora', fin.toISOString())
+      .maybeSingle()
+
+    if (existente) {
+      return { success: false, error: 'Ya tiene asistencia ese dia', yaExiste: true }
+    }
+
+    var fechaHora = new Date(fecha + 'T12:00:00')
+
+    var { error: asistError } = await supabase
+      .from('asistencias')
+      .insert({
+        socio_id: socioId,
+        gym_id: gymId,
+        fecha_hora: fechaHora.toISOString()
+      })
+
+    if (asistError) throw asistError
+
+    // Descontar sesion si es plan por sesiones
+    var { data: socio } = await supabase
+      .from('socios')
+      .select('sesiones_total, sesiones_usadas, sesiones_restantes')
+      .eq('id', socioId)
+      .eq('gym_id', gymId)
+      .single()
+
+    if (socio && socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+      await supabase
+        .from('socios')
+        .update({
+          sesiones_usadas: (socio.sesiones_usadas || 0) + 1,
+          sesiones_restantes: (socio.sesiones_restantes || 0) - 1
+        })
+        .eq('id', socioId)
+        .eq('gym_id', gymId)
+    }
+
+    return { success: true }
+
+  } catch (error) {
+    console.error('Error registrando asistencia retroactiva:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Eliminar asistencia por fecha (para desmarcar desde calendario)
+export const eliminarAsistenciaPorFecha = async (gymId, socioId, fecha) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
+
+  try {
+    var inicio = new Date(fecha + 'T00:00:00')
+    var fin = new Date(fecha + 'T23:59:59')
+
+    var { error } = await supabase
+      .from('asistencias')
+      .delete()
+      .eq('gym_id', gymId)
+      .eq('socio_id', socioId)
+      .gte('fecha_hora', inicio.toISOString())
+      .lte('fecha_hora', fin.toISOString())
+
+    if (error) throw error
+
+    // Devolver sesion si es plan por sesiones
+    var { data: socio } = await supabase
+      .from('socios')
+      .select('sesiones_total, sesiones_usadas, sesiones_restantes')
+      .eq('id', socioId)
+      .eq('gym_id', gymId)
+      .single()
+
+    if (socio && socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+      await supabase
+        .from('socios')
+        .update({
+          sesiones_usadas: Math.max((socio.sesiones_usadas || 1) - 1, 0),
+          sesiones_restantes: (socio.sesiones_restantes || 0) + 1
+        })
+        .eq('id', socioId)
+        .eq('gym_id', gymId)
+    }
+
+    return { success: true }
+
+  } catch (error) {
+    console.error('Error eliminando asistencia por fecha:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Obtener asistencias de un miembro en un mes (para calendario)
+export const getAsistenciasPorMes = async (gymId, socioId, year, month) => {
+  if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido', data: [] }
+
+  try {
+    var inicio = new Date(year, month, 1)
+    var fin = new Date(year, month + 1, 0, 23, 59, 59)
+
+    var { data, error } = await supabase
+      .from('asistencias')
+      .select('id, fecha_hora')
+      .eq('gym_id', gymId)
+      .eq('socio_id', socioId)
+      .gte('fecha_hora', inicio.toISOString())
+      .lte('fecha_hora', fin.toISOString())
+      .order('fecha_hora', { ascending: true })
+
+    if (error) throw error
+
+    var fechas = new Set()
+    ;(data || []).forEach(function (a) {
+      var d = new Date(a.fecha_hora)
+      var offset = d.getTimezoneOffset()
+      var local = new Date(d.getTime() - offset * 60000)
+      fechas.add(local.toISOString().split('T')[0])
+    })
+
+    return { success: true, data: fechas }
+
+  } catch (error) {
+    console.error('Error obteniendo asistencias del mes:', error)
+    return { success: false, error: error.message, data: new Set() }
   }
 }
 

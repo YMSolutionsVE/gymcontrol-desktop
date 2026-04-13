@@ -1,8 +1,230 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { registrarAsistencia, getAsistenciasHoy, getSociosParaAsistencia, eliminarAsistencia } from '../services/asistenciasService'
+import { registrarAsistencia, getAsistenciasHoy, getSociosParaAsistencia, eliminarAsistencia, registrarAsistenciaRetroactiva, eliminarAsistenciaPorFecha, getAsistenciasPorMes } from '../services/asistenciasService'
 import StatusBadge from '../components/StatusBadge'
 import AdminConfirmModal from '../components/AdminConfirmModal'
+
+// --- Calendario retroactivo ---
+function CalendarioRetroactivo({ gymId, socio, onClose, onUpdate }) {
+  var hoy = new Date()
+  var [year, setYear] = useState(hoy.getFullYear())
+  var [month, setMonth] = useState(hoy.getMonth())
+  var [diasMarcados, setDiasMarcados] = useState(new Set())
+  var [cargando, setCargando] = useState(true)
+  var [procesando, setProcesando] = useState(null)
+
+  var cargarMes = useCallback(async function () {
+    setCargando(true)
+    var result = await getAsistenciasPorMes(gymId, socio.id, year, month)
+    if (result.success) setDiasMarcados(result.data)
+    setCargando(false)
+  }, [gymId, socio.id, year, month])
+
+  useEffect(function () { cargarMes() }, [cargarMes])
+
+  var meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  var diasSemana = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do']
+
+  var primerDia = new Date(year, month, 1)
+  var ultimoDia = new Date(year, month + 1, 0)
+  var inicioSemana = primerDia.getDay() - 1
+  if (inicioSemana < 0) inicioSemana = 6
+
+  var diasEnMes = ultimoDia.getDate()
+  var fechaHoyStr = hoy.toISOString().split('T')[0]
+
+  var handleToggleDia = async function (dia) {
+    var fecha = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(dia).padStart(2, '0')
+    if (fecha > fechaHoyStr) return
+
+    setProcesando(dia)
+
+    if (diasMarcados.has(fecha)) {
+      var result = await eliminarAsistenciaPorFecha(gymId, socio.id, fecha)
+      if (result.success) {
+        setDiasMarcados(function (prev) {
+          var next = new Set(prev)
+          next.delete(fecha)
+          return next
+        })
+      }
+    } else {
+      var result2 = await registrarAsistenciaRetroactiva(gymId, socio.id, fecha)
+      if (result2.success) {
+        setDiasMarcados(function (prev) { return new Set([].concat(Array.from(prev), [fecha])) })
+      }
+    }
+
+    setProcesando(null)
+    if (onUpdate) onUpdate()
+  }
+
+  var mesAnterior = function () {
+    if (month === 0) { setMonth(11); setYear(year - 1) }
+    else setMonth(month - 1)
+  }
+
+  var mesSiguiente = function () {
+    var limiteYear = hoy.getFullYear()
+    var limiteMonth = hoy.getMonth()
+    if (year > limiteYear || (year === limiteYear && month >= limiteMonth)) return
+    if (month === 11) { setMonth(0); setYear(year + 1) }
+    else setMonth(month + 1)
+  }
+
+  var puedeSiguiente = year < hoy.getFullYear() || (year === hoy.getFullYear() && month < hoy.getMonth())
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+      <div
+        className="w-full max-w-md mx-4 rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #0D1117, #111827)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+          animation: 'gcFadeInUp 0.2s ease-out'
+        }}
+      >
+        {/* Header */}
+        <div className="px-6 pt-5 pb-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg">Marcar asistencias</h3>
+                <p className="text-gray-500 text-xs mt-0.5">{socio.nombre}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="transition-colors duration-150"
+              style={{ color: '#6b7280' }}
+              onMouseEnter={function (e) { e.currentTarget.style.color = '#ffffff' }}
+              onMouseLeave={function (e) { e.currentTarget.style.color = '#6b7280' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Navegacion mes */}
+        <div className="flex items-center justify-between px-6 pb-3">
+          <button
+            onClick={mesAnterior}
+            className="p-1.5 rounded-lg transition-all duration-150"
+            style={{ color: '#9ca3af' }}
+            onMouseEnter={function (e) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#ffffff' }}
+            onMouseLeave={function (e) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <span className="text-white font-semibold text-sm">{meses[month] + ' ' + year}</span>
+          <button
+            onClick={mesSiguiente}
+            disabled={!puedeSiguiente}
+            className="p-1.5 rounded-lg transition-all duration-150"
+            style={{ color: puedeSiguiente ? '#9ca3af' : '#374151', cursor: puedeSiguiente ? 'pointer' : 'not-allowed' }}
+            onMouseEnter={function (e) { if (puedeSiguiente) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#ffffff' } }}
+            onMouseLeave={function (e) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = puedeSiguiente ? '#9ca3af' : '#374151' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        </div>
+
+        {/* Calendario */}
+        <div className="px-6 pb-5">
+          {cargando ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-7 h-7 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 gap-1 mb-1">
+                {diasSemana.map(function (d) {
+                  return <div key={d} className="text-center text-[10px] font-semibold py-1" style={{ color: '#4b5563' }}>{d}</div>
+                })}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: inicioSemana }).map(function (_, i) {
+                  return <div key={'empty-' + i} />
+                })}
+                {Array.from({ length: diasEnMes }).map(function (_, i) {
+                  var dia = i + 1
+                  var fecha = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(dia).padStart(2, '0')
+                  var marcado = diasMarcados.has(fecha)
+                  var esFuturo = fecha > fechaHoyStr
+                  var esHoy = fecha === fechaHoyStr
+                  var esProcesando = procesando === dia
+
+                  var baseStyle = {
+                    cursor: esFuturo ? 'not-allowed' : 'pointer',
+                    background: marcado ? 'rgba(16,185,129,0.15)' : esHoy ? 'rgba(59,130,246,0.08)' : 'transparent',
+                    border: '1px solid ' + (marcado ? 'rgba(16,185,129,0.3)' : esHoy ? 'rgba(59,130,246,0.2)' : 'transparent'),
+                    color: esFuturo ? '#374151' : marcado ? '#34d399' : esHoy ? '#60a5fa' : '#9ca3af',
+                  }
+
+                  return (
+                    <button
+                      key={dia}
+                      disabled={esFuturo || esProcesando}
+                      onClick={function () { handleToggleDia(dia) }}
+                      className="aspect-square rounded-lg text-xs font-medium transition-all duration-150 flex items-center justify-center relative"
+                      style={baseStyle}
+                      onMouseEnter={function (e) {
+                        if (!esFuturo && !marcado) {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                        }
+                      }}
+                      onMouseLeave={function (e) {
+                        e.currentTarget.style.background = baseStyle.background
+                        e.currentTarget.style.borderColor = baseStyle.border.replace('1px solid ', '')
+                      }}
+                    >
+                      {esProcesando ? (
+                        <div className="w-3 h-3 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          {dia}
+                          {marcado && (
+                            <div className="absolute bottom-0.5 w-1 h-1 rounded-full" style={{ background: '#34d399' }} />
+                          )}
+                        </>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <span className="text-xs" style={{ color: '#6b7280' }}>
+            {diasMarcados.size + ' asistencia' + (diasMarcados.size !== 1 ? 's' : '') + ' en ' + meses[month].toLowerCase()}
+          </span>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#9ca3af' }}
+            onMouseEnter={function (e) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={function (e) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Asistencias() {
   var { gymId } = useAuth()
@@ -18,11 +240,8 @@ export default function Asistencias() {
   var [showAdminModal, setShowAdminModal] = useState(false)
   var [asistenciaAEliminar, setAsistenciaAEliminar] = useState(null)
 
-  // Estado para confirmar entrada con pago pendiente
-  var [showPendienteModal, setShowPendienteModal] = useState(false)
-  var [socioPendienteId, setSocioPendienteId] = useState(null)
-  var [socioPendienteNombre, setSocioPendienteNombre] = useState('')
-  var [socioPendienteError, setSocioPendienteError] = useState('')
+  // Calendario retroactivo
+  var [socioCalendario, setSocioCalendario] = useState(null)
 
   var cargarDatos = useCallback(async function () {
     if (!gymId) { setLoading(false); return }
@@ -59,49 +278,33 @@ export default function Asistencias() {
     setTimeout(function () { setMessage(null) }, 4000)
   }
 
+  // Helper para detectar si un socio necesita pago
+  var socioNecesitaPago = function (socio) {
+    if (socio.es_cortesia) return false
+    if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
+      return !socio.sesiones_restantes || socio.sesiones_restantes <= 0
+    }
+    if (!socio.fecha_vencimiento) return true
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+    var vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
+    return vencimiento < hoy
+  }
+
+  // --- Registrar asistencia (sin bloqueo por pago) ---
   var handleRegistrar = async function (socioId) {
     setMessage(null)
     var result = await registrarAsistencia(gymId, socioId)
 
     if (result.success) {
       if (result.conPendiente) {
-        mostrarMensaje('Entrada registrada con PAGO PENDIENTE: ' + result.socio.nombre, 'warning')
+        mostrarMensaje('Asistencia registrada — ' + result.socio.nombre + ' tiene pago pendiente', 'warning')
       } else {
         mostrarMensaje('Asistencia registrada: ' + result.socio.nombre, 'success')
       }
       cargarDatos()
-    } else if (result.codigo === 'REQUIERE_PAGO') {
-      var socioEncontrado = todosLosSocios.find(function (s) { return s.id === socioId })
-      setSocioPendienteId(socioId)
-      setSocioPendienteNombre(socioEncontrado ? socioEncontrado.nombre : 'Miembro')
-      setSocioPendienteError(result.error)
-      setShowPendienteModal(true)
     } else {
       mostrarMensaje(result.error, 'error')
     }
-  }
-
-  var handleConfirmarPendiente = async function () {
-    setShowPendienteModal(false)
-    var result = await registrarAsistencia(gymId, socioPendienteId, { forzarConPendiente: true })
-
-    if (result.success) {
-      mostrarMensaje('Entrada registrada con PAGO PENDIENTE: ' + socioPendienteNombre, 'warning')
-      cargarDatos()
-    } else {
-      mostrarMensaje(result.error, 'error')
-    }
-
-    setSocioPendienteId(null)
-    setSocioPendienteNombre('')
-    setSocioPendienteError('')
-  }
-
-  var handleCancelarPendiente = function () {
-    setShowPendienteModal(false)
-    setSocioPendienteId(null)
-    setSocioPendienteNombre('')
-    setSocioPendienteError('')
   }
 
   var handleIniciarDesmarcar = function (asistencia) {
@@ -243,6 +446,7 @@ export default function Asistencias() {
               {sociosFiltrados.map(function (socio, index) {
                 var esNuevo = socio.totalAsistencias === 0
                 var yaMarcoHoy = socio.marcoHoy
+                var necesitaPago = socioNecesitaPago(socio)
 
                 return (
                   <div key={socio.id}>
@@ -338,6 +542,20 @@ export default function Asistencias() {
                                   Marco hoy
                                 </span>
                               )}
+                              {/* Indicador sutil de pago pendiente */}
+                              {necesitaPago && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1"
+                                  style={{
+                                    background: 'rgba(234,179,8,0.06)',
+                                    border: '1px solid rgba(234,179,8,0.12)',
+                                    color: 'rgba(251,191,36,0.7)',
+                                  }}
+                                >
+                                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                                  Pago pendiente
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 text-sm" style={{ color: '#6b7280' }}>
                               <span>{'CI: ' + socio.cedula}</span>
@@ -357,47 +575,74 @@ export default function Asistencias() {
                           </div>
                         </div>
 
-                        <button
-                          disabled={yaMarcoHoy}
-                          onClick={function () { handleRegistrar(socio.id) }}
-                          className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2 shrink-0 ml-3"
-                          style={yaMarcoHoy ? {
-                            background: 'rgba(255,255,255,0.03)',
-                            border: '1px solid rgba(255,255,255,0.06)',
-                            color: '#4b5563',
-                            cursor: 'not-allowed',
-                          } : {
-                            background: 'rgba(16,185,129,0.08)',
-                            border: '1px solid rgba(16,185,129,0.2)',
-                            color: '#34d399',
-                          }}
-                          onMouseEnter={function (e) {
-                            if (!yaMarcoHoy) {
-                              e.currentTarget.style.background = 'rgba(16,185,129,0.15)'
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          {/* Boton calendario retroactivo */}
+                          <button
+                            onClick={function () { setSocioCalendario(socio) }}
+                            className="px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-1.5"
+                            style={{
+                              background: 'rgba(59,130,246,0.06)',
+                              border: '1px solid rgba(59,130,246,0.15)',
+                              color: '#60a5fa',
+                            }}
+                            title="Marcar asistencias pasadas"
+                            onMouseEnter={function (e) {
+                              e.currentTarget.style.background = 'rgba(59,130,246,0.12)'
                               e.currentTarget.style.transform = 'translateY(-1px)'
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(16,185,129,0.15)'
-                            }
-                          }}
-                          onMouseLeave={function (e) {
-                            if (!yaMarcoHoy) {
-                              e.currentTarget.style.background = 'rgba(16,185,129,0.08)'
+                            }}
+                            onMouseLeave={function (e) {
+                              e.currentTarget.style.background = 'rgba(59,130,246,0.06)'
                               e.currentTarget.style.transform = 'translateY(0)'
-                              e.currentTarget.style.boxShadow = 'none'
-                            }
-                          }}
-                        >
-                          {yaMarcoHoy ? (
-                            <>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                              Ya marco hoy
-                            </>
-                          ) : (
-                            <>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
-                              Registrar entrada
-                            </>
-                          )}
-                        </button>
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                            </svg>
+                          </button>
+
+                          {/* Boton registrar entrada */}
+                          <button
+                            disabled={yaMarcoHoy}
+                            onClick={function () { handleRegistrar(socio.id) }}
+                            className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2"
+                            style={yaMarcoHoy ? {
+                              background: 'rgba(255,255,255,0.03)',
+                              border: '1px solid rgba(255,255,255,0.06)',
+                              color: '#4b5563',
+                              cursor: 'not-allowed',
+                            } : {
+                              background: 'rgba(16,185,129,0.08)',
+                              border: '1px solid rgba(16,185,129,0.2)',
+                              color: '#34d399',
+                            }}
+                            onMouseEnter={function (e) {
+                              if (!yaMarcoHoy) {
+                                e.currentTarget.style.background = 'rgba(16,185,129,0.15)'
+                                e.currentTarget.style.transform = 'translateY(-1px)'
+                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(16,185,129,0.15)'
+                              }
+                            }}
+                            onMouseLeave={function (e) {
+                              if (!yaMarcoHoy) {
+                                e.currentTarget.style.background = 'rgba(16,185,129,0.08)'
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.boxShadow = 'none'
+                              }
+                            }}
+                          >
+                            {yaMarcoHoy ? (
+                              <>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                                Ya marco hoy
+                              </>
+                            ) : (
+                              <>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
+                                Registrar entrada
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -500,91 +745,14 @@ export default function Asistencias() {
         />
       )}
 
-      {/* Modal confirmar entrada con pago pendiente */}
-      {showPendienteModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-          <div
-            className="w-full max-w-md mx-4 rounded-2xl p-6"
-            style={{
-              background: 'linear-gradient(145deg, #0D1117, #111827)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
-              animation: 'gcFadeInUp 0.2s ease-out'
-            }}
-          >
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{
-                  background: 'rgba(234,179,8,0.15)',
-                  border: '1px solid rgba(234,179,8,0.3)'
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Pago pendiente</h2>
-                <p className="text-gray-500 text-xs mt-0.5">{socioPendienteNombre}</p>
-              </div>
-            </div>
-
-            {/* Motivo */}
-            <div
-              className="px-4 py-3 rounded-xl mb-4 text-sm"
-              style={{
-                background: 'rgba(234,179,8,0.04)',
-                border: '1px solid rgba(234,179,8,0.1)',
-                color: '#fbbf24'
-              }}
-            >
-              {socioPendienteError}
-            </div>
-
-            <p className="text-gray-400 text-sm mb-5">
-              {'Quieres registrar la entrada de ' + socioPendienteNombre + ' y marcar el pago como pendiente?'}
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleConfirmarPendiente}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2"
-                style={{
-                  background: 'rgba(234,179,8,0.15)',
-                  border: '1px solid rgba(234,179,8,0.3)',
-                  color: '#facc15'
-                }}
-                onMouseEnter={function (e) { e.currentTarget.style.background = 'rgba(234,179,8,0.25)' }}
-                onMouseLeave={function (e) { e.currentTarget.style.background = 'rgba(234,179,8,0.15)' }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                  <polyline points="10 17 15 12 10 7" />
-                  <line x1="15" y1="12" x2="3" y2="12" />
-                </svg>
-                Registrar con pendiente
-              </button>
-
-              <button
-                onClick={handleCancelarPendiente}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-                style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#9ca3af'
-                }}
-                onMouseEnter={function (e) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-                onMouseLeave={function (e) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Calendario retroactivo */}
+      {socioCalendario && (
+        <CalendarioRetroactivo
+          gymId={gymId}
+          socio={socioCalendario}
+          onClose={function () { setSocioCalendario(null) }}
+          onUpdate={cargarDatos}
+        />
       )}
     </div>
   )
