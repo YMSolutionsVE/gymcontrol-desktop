@@ -4,20 +4,31 @@ const { autoUpdater } = require('electron-updater')
 
 const isDev = !app.isPackaged
 
+// ==================================================================
+// 🔥 OPTIMIZACIÓN EXTREMA DE MEMORIA Y RENDIMIENTO
+// ==================================================================
+// 1. Pone a dieta al motor V8 de JavaScript limitando la RAM a ~256MB
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256')
+// 2. Apaga el aislamiento de sitios web (ahorra muchísima RAM en Electron)
+app.commandLine.appendSwitch('disable-site-isolation-trials')
+// 3. Acelera la interfaz gráfica delegando el pintado a la GPU
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+// 4. Mantiene el Live Activity (Supabase WebSockets) fluido sin acumular basura en memoria al minimizar
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+// ==================================================================
+
 let mainWindow = null
 
 /* ------------------------------------------------------------------ */
-/*  Version handler (sync para preload)                                */
+/* Version handler (sync para preload)                               */
 /* ------------------------------------------------------------------ */
-
 ipcMain.on('get-app-version', function (event) {
   event.returnValue = app.getVersion()
 })
 
 /* ------------------------------------------------------------------ */
-/*  Auto-updater config                                                */
+/* Auto-updater config                                               */
 /* ------------------------------------------------------------------ */
-
 function setupAutoUpdater() {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
@@ -100,9 +111,8 @@ function parseReleaseNotes(notes) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  IPC handlers                                                       */
+/* IPC handlers                                                      */
 /* ------------------------------------------------------------------ */
-
 function setupIPC() {
   ipcMain.handle('check-for-updates', function () {
     if (isDev) {
@@ -132,9 +142,8 @@ function setupIPC() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Window                                                             */
+/* Window                                                            */
 /* ------------------------------------------------------------------ */
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -142,13 +151,15 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'GymControl',
-    icon: path.join(__dirname, '..', 'public', 'icon.ico'),
-    backgroundColor: '#0B0F1A',
+    // 🔥 Icono apuntando directamente al PNG del sidebar
+    icon: path.join(__dirname, '..', 'public', 'logo-ym-transparent.png'),
+    backgroundColor: '#050505', // Fondo más oscuro para que combine con el Glassmorphism
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      backgroundThrottling: false // Evita que la app se duerma y corte el WebSocket
     }
   })
 
@@ -170,14 +181,14 @@ function createWindow() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  App lifecycle                                                      */
+/* App lifecycle                                                     */
 /* ------------------------------------------------------------------ */
-
 app.whenReady().then(function () {
   setupIPC()
   setupAutoUpdater()
   createWindow()
 
+  // Retraso de 8 segundos para buscar updates para no congelar la carga inicial
   if (!isDev) {
     setTimeout(function () {
       autoUpdater.checkForUpdates()

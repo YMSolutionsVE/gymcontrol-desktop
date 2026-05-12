@@ -1,6 +1,6 @@
 {
   "name": "gymcontrol-desktop",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "GymControl by YM Solutions",
   "author": {
     "name": "YM Solutions",
@@ -17,7 +17,7 @@
   "build": {
     "appId": "com.ymsolutions.gymcontrol",
     "productName": "GymControl",
-    "copyright": "Copyright © 2025 YM Solutions. Todos los derechos reservados.",
+    "copyright": "Copyright © 2026 YM Solutions. Todos los derechos reservados.",
     "directories": {
       "output": "release"
     },
@@ -28,15 +28,15 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico",
+      "icon": "public/logo-ym-transparent.png",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/icon.ico",
-      "uninstallerIcon": "public/icon.ico",
-      "installerHeaderIcon": "public/icon.ico",
+      "installerIcon": "public/logo-ym-transparent.png",
+      "uninstallerIcon": "public/logo-ym-transparent.png",
+      "installerHeaderIcon": "public/logo-ym-transparent.png",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "GymControl"
