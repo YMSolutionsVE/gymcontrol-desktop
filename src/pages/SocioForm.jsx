@@ -15,7 +15,7 @@ export default function SocioForm({ socio, onSave, onCancel }) {
   const tasaBcv = Number(config?.tasa_bcv) || 0
 
   const [form, setForm] = useState({
-    nombre: '', cedula: '', telefono: '',
+    nombre: '', cedula: '', telefono: '', genero: '', fecha_nacimiento: '',
     plan_actual: '', plan_id: null,
     fecha_vencimiento: '',
     es_cortesia: false, nota_cortesia: '',
@@ -32,6 +32,8 @@ export default function SocioForm({ socio, onSave, onCancel }) {
         nombre: socio.nombre || '',
         cedula: socio.cedula || '',
         telefono: socio.telefono || '',
+        genero: socio.genero || '',
+        fecha_nacimiento: socio.fecha_nacimiento || '',
         plan_actual: socio.plan_actual || '',
         plan_id: socio.plan_id || null,
         fecha_vencimiento: socio.fecha_vencimiento || '',
@@ -88,7 +90,12 @@ export default function SocioForm({ socio, onSave, onCancel }) {
     if (!form.plan_id && !form.es_cortesia) return setError('Selecciona un plan')
     if (form.es_cortesia && !form.nota_cortesia.trim()) return setError('La cortesía requiere una nota explicativa')
     setSaving(true)
-    try { await onSave(form) }
+    try { 
+      const dataToSave = { ...form }
+      if (!dataToSave.genero) dataToSave.genero = null
+      if (!dataToSave.fecha_nacimiento) dataToSave.fecha_nacimiento = null
+      await onSave(dataToSave) 
+    }
     catch (err) { setError(err.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
@@ -178,6 +185,26 @@ export default function SocioForm({ socio, onSave, onCancel }) {
                   <input type="text" value={form.telefono} onChange={e => handleChange('telefono', e.target.value)}
                     placeholder="0412-1234567"
                     className="w-full px-4 py-3 rounded-xl text-white text-sm placeholder-gray-600 focus:outline-none transition-all"
+                    style={inputBase}
+                    disabled={saving} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Género (Opcional)</label>
+                  <select value={form.genero} onChange={e => handleChange('genero', e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none transition-all appearance-none cursor-pointer"
+                    style={{ ...inputBase, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center' }}
+                    disabled={saving}>
+                    <option value="" style={{ background: '#0D1117' }}>Selecciona...</option>
+                    <option value="M" style={{ background: '#0D1117' }}>Masculino</option>
+                    <option value="F" style={{ background: '#0D1117' }}>Femenino</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-xs font-medium mb-1.5">Nacimiento (Opcional)</label>
+                  <input type="date" value={form.fecha_nacimiento} onChange={e => handleChange('fecha_nacimiento', e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-white text-sm focus:outline-none transition-all"
                     style={inputBase}
                     disabled={saving} />
                 </div>

@@ -1,13 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useSocios } from '../hooks/useSocios'
-import {
-  createSocio, updateSocio, deactivateSocio, deleteSocio
-} from '../services/sociosService'
-import {
-  getPendientesSinConfirmar, getPendientesHoy, getPagosPorFecha
-} from '../services/pagosService'
-
+import { createSocio, updateSocio, deactivateSocio, deleteSocio } from '../services/sociosService'
+import { getPendientesSinConfirmar, getPendientesHoy, getPagosPorFecha } from '../services/pagosService'
 import SocioCard from '../components/SocioCard'
 import SocioForm from './SocioForm'
 import PagoForm from './PagoForm'
@@ -20,9 +15,15 @@ const obtenerFechaLocal = () => {
   return ahora.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
 }
 
+const GlassPanel = ({ children, className = '' }) => (
+  <div className={`bg-[#111827]/60 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-2xl p-6 ${className}`}>{children}</div>
+)
+
 export default function Socios({ onVerMiembro }) {
   const { gymId } = useAuth()
   const { socios, loading, error, searchTerm, setSearchTerm, reload, setEstado } = useSocios(gymId)
+  
+  useEffect(() => { setEstado('todos') }, [setEstado])
 
   const [estadoFiltro, setEstadoFiltro] = useState('todos')
   const [view, setView] = useState('list')
@@ -64,23 +65,59 @@ export default function Socios({ onVerMiembro }) {
   const getEstadoPago = (socio) => {
     if (pendientesPorSocio.has(socio.id)) return 'pendiente'
     if (pagadosPorSocio.has(socio.id)) return 'pagado'
-    // Plan por sesiones: tiene sesiones disponibles = está al día
-    if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
-      return socio.sesiones_restantes > 0 ? 'pagado' : 'sin_pago'
-    }
-    // Plan por días
+    if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) return socio.sesiones_restantes > 0 ? 'pagado' : 'sin_pago'
     if (socio.fecha_vencimiento) {
       const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
       const vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
-      if (Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24)) > 0) return 'pagado'
+      if (Math.ceil((vencimiento - hoy) / 86400000) > 0) return 'pagado'
     }
     return 'sin_pago'
   }
 
-  const showMessage = (text, type = 'success') => {
-    setMessage({ text, type })
-    setTimeout(() => setMessage(null), 3000)
-  }
+  // 🔥 EL BUG ESTABA AQUÍ: Lógica de Fechas exacta para los filtros
+  const calcularEstadoFiltro = useCallback((s) => {
+    if (!s.activo) return 'inactivos'
+    if (s.sesiones_total !== null && s.sesiones_total !== undefined) {
+      if (!s.sesiones_restantes || s.sesiones_restantes <= 0) return 'vencidos'
+      if (s.sesiones_restantes <= 2) return 'por_vencer'
+      return 'activos'
+    }
+    // 🔥 Si no tiene plan (Sin plan), lo metemos directo a "Vencidos" para que aparezca en el filtro
+    if (!s.fecha_vencimiento) return 'vencidos' 
+    
+    const hoy = new Date(); hoy.setHours(0,0,0,0)
+    const v = new Date(s.fecha_vencimiento + 'T00:00:00')
+    const d = Math.ceil((v - hoy) / 86400000)
+    if (d < 0) return 'vencidos'
+    if (d <= 3) return 'por_vencer'
+    return 'activos'
+  }, [])
+
+  const sociosFiltrados = useMemo(() => {
+    return socios.filter(s => {
+      if (estadoFiltro === 'todos') return s.activo
+      if (estadoFiltro === 'inactivos') return !s.activo
+      if (!s.activo) return false 
+      return calcularEstadoFiltro(s) === estadoFiltro
+    }).filter(s => {
+      if (!searchTerm.trim()) return true
+      const term = searchTerm.toLowerCase()
+      return s.nombre.toLowerCase().includes(term) || s.cedula.includes(term)
+    })
+  }, [socios, estadoFiltro, searchTerm, calcularEstadoFiltro])
+
+  const contadores = useMemo(() => {
+    const counts = { todos: 0, activos: 0, vencidos: 0, por_vencer: 0, inactivos: 0 }
+    socios.forEach(s => {
+      if (!s.activo) { counts.inactivos++; return }
+      counts.todos++
+      const est = calcularEstadoFiltro(s)
+      if (counts[est] !== undefined) counts[est]++
+    })
+    return counts
+  }, [socios, calcularEstadoFiltro])
+
+  const showMessage = (text, type = 'success') => { setMessage({ text, type }); setTimeout(() => setMessage(null), 3000) }
 
   const handleNew = () => { setEditingSocio(null); setView('form') }
   const handleEdit = (socio) => { setEditingSocio(socio); setView('form') }
@@ -89,287 +126,108 @@ export default function Socios({ onVerMiembro }) {
   const handleDeactivate = async (socio) => {
     if (!window.confirm(`¿Desactivar a ${socio.nombre}?`)) return
     const result = await deactivateSocio(gymId, socio.id)
-    if (result.success) { showMessage(`${socio.nombre} desactivado`); reload() }
-    else showMessage(result.error, 'error')
+    if (result.success) { showMessage(`${socio.nombre} desactivado`); reload() } else showMessage(result.error, 'error')
   }
   const handleDelete = (socio) => setSocioAEliminar(socio)
   const confirmDelete = async () => {
     const result = await deleteSocio(gymId, socioAEliminar.id)
-    if (result.success) { showMessage('Miembro eliminado'); setSocioAEliminar(null); reload() }
-    else showMessage(result.error, 'error')
+    if (result.success) { showMessage('Miembro eliminado'); setSocioAEliminar(null); reload() } else showMessage(result.error, 'error')
   }
   const handleSave = async (formData) => {
-    let result = editingSocio
-      ? await updateSocio(gymId, editingSocio.id, formData)
-      : await createSocio(gymId, formData)
-    if (result.success) { showMessage(editingSocio ? 'Miembro actualizado' : 'Miembro registrado'); setView('list'); reload(); cargarEstadoPagos() }
-    else throw new Error(result.error)
+    let result = editingSocio ? await updateSocio(gymId, editingSocio.id, formData) : await createSocio(gymId, formData)
+    if (result.success) { showMessage(editingSocio ? 'Miembro actualizado' : 'Miembro registrado'); setView('list'); reload(); cargarEstadoPagos() } else throw new Error(result.error)
   }
   const handlePagoComplete = () => { showMessage('Pago registrado'); setView('list'); reload(); cargarEstadoPagos() }
   const handleCancel = () => { setView('list'); setEditingSocio(null); setPayingSocio(null) }
-  const handleFiltroChange = (filtroId) => {
-    setEstadoFiltro(filtroId)
-    if (filtroId !== 'pendientes') setEstado(filtroId)
-  }
 
-  if (view === 'form') return (
-    <div className="p-8 max-w-[800px] gc-fade-in">
-      <SocioForm socio={editingSocio} onSave={handleSave} onCancel={handleCancel} />
-    </div>
-  )
+  if (view === 'form') return <div className="p-8 max-w-[800px] animate-in fade-in"><SocioForm socio={editingSocio} onSave={handleSave} onCancel={handleCancel} /></div>
+  if (view === 'pago') return <div className="p-8 max-w-[800px] animate-in fade-in"><PagoForm socio={payingSocio} onComplete={handlePagoComplete} onCancel={handleCancel} /></div>
 
-  if (view === 'pago') return (
-    <div className="p-8 max-w-[800px] gc-fade-in">
-      <PagoForm socio={payingSocio} onComplete={handlePagoComplete} onCancel={handleCancel} />
-    </div>
-  )
-
-  const filtros = [
-    { id: 'todos', label: 'Todos', color: 'blue' },
-    { id: 'activos', label: 'Activos', color: 'green' },
-    { id: 'por_vencer', label: 'Por vencer', color: 'yellow' },
+  const filtrosUI = [
+    { id: 'todos', label: 'Directorio', color: 'blue' },
+    { id: 'activos', label: 'Al Día', color: 'emerald' },
+    { id: 'por_vencer', label: 'Por vencer', color: 'amber' },
     { id: 'vencidos', label: 'Vencidos', color: 'red' },
+    { id: 'inactivos', label: 'Inactivos', color: 'gray' },
   ]
 
   const filtroColors = {
-    blue: { active: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.25)', text: '#60a5fa' },
-    green: { active: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)', text: '#34d399' },
-    yellow: { active: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)', text: '#fbbf24' },
-    red: { active: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.25)', text: '#f87171' },
+    blue: { active: 'bg-[#3B82F6] text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]', inactive: 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/10' },
+    emerald: { active: 'bg-[#10B981] text-[#050505] shadow-[0_0_15px_rgba(16,185,129,0.4)]', inactive: 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/10' },
+    amber: { active: 'bg-amber-500 text-[#050505] shadow-[0_0_15px_rgba(245,158,11,0.4)]', inactive: 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/10' },
+    red: { active: 'bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]', inactive: 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/10' },
+    gray: { active: 'bg-gray-500 text-white shadow-[0_0_15px_rgba(107,114,128,0.4)]', inactive: 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/10' }
   }
 
   return (
-    <div className="p-8 max-w-[1200px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 gc-stagger-1">
+    <div className="p-8 max-w-[1200px] mx-auto relative z-10 text-white font-sans animate-in fade-in duration-500">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Miembros</h1>
-          <p className="text-gray-500 text-sm mt-0.5">
-            {socios.length} registrado{socios.length !== 1 ? 's' : ''}
-          </p>
+          <h1 className="text-3xl font-black text-white tracking-tight drop-shadow-md">Miembros</h1>
+          <p className="text-gray-400 text-sm mt-1 font-medium">{sociosFiltrados.length} listados de {contadores.todos}</p>
         </div>
-        <button
-          onClick={handleNew}
-          className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all duration-200 flex items-center gap-2"
-          style={{
-            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)'
-            e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.3)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)'
-            e.currentTarget.style.boxShadow = 'none'
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Nuevo Miembro
+        <button onClick={handleNew} className="bg-gradient-to-r from-[#3B82F6] to-blue-600 hover:to-blue-500 text-white font-black py-3 px-6 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all active:scale-95">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          Inscribir Atleta
         </button>
       </div>
 
-      {/* Messages */}
       {message && (
-        <div
-          className="px-4 py-3 rounded-xl mb-4 text-sm flex items-center gap-2"
-          style={{
-            background: message.type === 'error' ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)',
-            border: `1px solid ${message.type === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'}`,
-            color: message.type === 'error' ? '#f87171' : '#34d399',
-            animation: 'gcFadeInUp 0.3s ease-out',
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            {message.type === 'error'
-              ? <><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>
-              : <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>
-            }
-          </svg>
+        <div className={`px-5 py-4 rounded-xl mb-6 text-sm font-bold flex items-center gap-3 glassmorphism animate-in slide-in-from-top-4 ${message.type === 'error' ? 'text-red-400 border-red-500/30 bg-red-500/10' : 'text-[#10B981] border-[#10B981]/30 bg-[#10B981]/10'}`}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">{message.type === 'error' ? <><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></> : <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>}</svg>
           {message.text}
         </div>
       )}
 
-      {/* Search */}
       {estadoFiltro !== 'pendientes' && (
-        <div className="relative mb-4 gc-stagger-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nombre o cédula..."
-            className="w-full pl-11 pr-4 py-3 rounded-xl text-white placeholder-gray-600 text-sm transition-all duration-200 focus:outline-none"
-            style={{
-              background: 'linear-gradient(145deg, #0D1117, #111827)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = 'rgba(59,130,246,0.3)'
-              e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.08)'
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = 'rgba(255,255,255,0.06)'
-              e.target.style.boxShadow = 'none'
-            }}
-          />
-        </div>
+        <GlassPanel className="!p-4 mb-6 flex items-center gap-4">
+          <div className="relative flex-1">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar atleta por nombre o cédula..." className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#3B82F6] text-sm transition-colors" />
+          </div>
+        </GlassPanel>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-2 mb-6 gc-stagger-3">
-        {filtros.map(f => {
+      <div className="flex flex-wrap gap-3 mb-8">
+        {filtrosUI.map(f => {
           const isActive = estadoFiltro === f.id
           const colors = filtroColors[f.color]
           return (
-            <button
-              key={f.id}
-              onClick={() => handleFiltroChange(f.id)}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
-              style={{
-                background: isActive ? colors.active : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${isActive ? colors.border : 'rgba(255,255,255,0.06)'}`,
-                color: isActive ? colors.text : '#6b7280',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                  e.currentTarget.style.color = '#d1d5db'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-                  e.currentTarget.style.color = '#6b7280'
-                }
-              }}
-            >
-              {f.label}
+            <button key={f.id} onClick={() => setEstadoFiltro(f.id)} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-white/5 ${isActive ? colors.active : colors.inactive}`}>
+              {f.label} <span className="ml-1 opacity-70">({contadores[f.id]})</span>
             </button>
           )
         })}
-
-        {/* Pendientes button */}
-        <button
-          onClick={() => handleFiltroChange('pendientes')}
-          className="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
-          style={{
-            background: estadoFiltro === 'pendientes' ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${estadoFiltro === 'pendientes' ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.06)'}`,
-            color: estadoFiltro === 'pendientes' ? '#fbbf24' : '#6b7280',
-          }}
-          onMouseEnter={(e) => {
-            if (estadoFiltro !== 'pendientes') {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-              e.currentTarget.style.color = '#d1d5db'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (estadoFiltro !== 'pendientes') {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-              e.currentTarget.style.color = '#6b7280'
-            }
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-          </svg>
-          Pendientes
-          {cantidadPendientes > 0 && (
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                color: '#ffffff',
-              }}
-            >
-              {cantidadPendientes}
-            </span>
-          )}
+        <div className="w-px h-10 bg-white/10 mx-1" />
+        <button onClick={() => setEstadoFiltro('pendientes')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border flex items-center gap-2 ${estadoFiltro === 'pendientes' ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)] border-amber-500' : 'bg-black/40 text-amber-500 hover:bg-amber-500/10 border-amber-500/30'}`}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+          Deudores
+          {cantidadPendientes > 0 && <span className="bg-amber-600 text-white px-2 py-0.5 rounded-md ml-1">{cantidadPendientes}</span>}
         </button>
       </div>
 
-      {/* Content */}
       {estadoFiltro === 'pendientes' ? (
-        <div className="gc-fade-in">
-          <PendientesPanel />
-        </div>
+        <div className="animate-in fade-in"><PendientesPanel /></div>
       ) : (
         <>
-          {loading && (
-            <div className="text-center py-16">
-              <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Cargando miembros...</p>
-            </div>
-          )}
-
-          {error && (
-            <div
-              className="text-center py-12 rounded-xl"
-              style={{
-                background: 'rgba(239,68,68,0.04)',
-                border: '1px solid rgba(239,68,68,0.1)',
-              }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" className="mx-auto mb-3">
-                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-              </svg>
-              <p className="text-red-400 text-sm">{error}</p>
-            </div>
-          )}
-
-          {!loading && !error && socios.length === 0 && (
-            <div
-              className="rounded-xl p-16 text-center gc-fade-in"
-              style={{
-                background: 'linear-gradient(145deg, #0D1117, #111827)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                style={{
-                  background: 'rgba(59,130,246,0.06)',
-                  border: '1px solid rgba(59,130,246,0.12)',
-                }}
-              >
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                  <line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" />
-                </svg>
-              </div>
-              <p className="text-gray-300 font-medium mb-1">No hay miembros registrados</p>
-              <p className="text-gray-600 text-sm">Haz click en "Nuevo Miembro" para agregar el primero</p>
-            </div>
-          )}
-
-          {!loading && !error && socios.length > 0 && (
-            <div className="space-y-2 gc-stagger-4">
-              {socios.map(socio => (
-                <SocioCard
-                  key={socio.id} socio={socio}
-                  estadoPago={getEstadoPago(socio)}
-                  onEdit={handleEdit} onDeactivate={handleDeactivate}
-                  onPay={handlePay} onDelete={handleDelete}
-                  onVerMiembro={onVerMiembro}
-                  onAccesoQR={handleAccesoQR}
-                />
+          {loading ? (
+            <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-[#3B82F6]/30 border-t-[#3B82F6] rounded-full animate-spin" /></div>
+          ) : error ? (
+            <GlassPanel className="text-center py-12 border-red-500/30 bg-red-500/10"><p className="text-red-400 font-bold">{error}</p></GlassPanel>
+          ) : sociosFiltrados.length === 0 ? (
+            <GlassPanel className="text-center py-20 border-white/5"><p className="text-gray-500 font-medium">No se encontraron resultados para el filtro aplicado.</p></GlassPanel>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sociosFiltrados.map(socio => (
+                <SocioCard key={socio.id} socio={socio} estadoPago={getEstadoPago(socio)} onEdit={handleEdit} onDeactivate={handleDeactivate} onPay={handlePay} onDelete={handleDelete} onVerMiembro={onVerMiembro} onAccesoQR={handleAccesoQR} />
               ))}
             </div>
           )}
         </>
       )}
 
-      {socioAEliminar && (
-        <AdminConfirmModal onConfirm={confirmDelete} onCancel={() => setSocioAEliminar(null)} />
-      )}
-
-      {socioQR && (
-        <GestionAccesoQR socio={socioQR} onClose={() => setSocioQR(null)} />
-      )}
+      {socioAEliminar && <AdminConfirmModal onConfirm={confirmDelete} onCancel={() => setSocioAEliminar(null)} />}
+      {socioQR && <GestionAccesoQR socio={socioQR} onClose={() => setSocioQR(null)} />}
     </div>
   )
 }
