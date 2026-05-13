@@ -66,6 +66,7 @@ export default function Configuracion() {
   const configHeaderName = isSuperAdmin ? 'YM Solutions - Superadmin' : gymNombre
   const [showForm, setShowForm] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
+  const [searchTermPlanes, setSearchTermPlanes] = useState('')
   const [planForm, setPlanForm] = useState(emptyPlanForm)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
@@ -81,6 +82,7 @@ export default function Configuracion() {
   const [todosLosSocios, setTodosLosSocios] = useState([])
   const [sociosYaAsignados, setSociosYaAsignados] = useState([])
   const [showAsignar, setShowAsignar] = useState(false)
+  const [searchTermAsignar, setSearchTermAsignar] = useState('') // Estado para el buscador
   const [cambiarPassInstructor, setCambiarPassInstructor] = useState(null)
   const [nuevaPassword, setNuevaPassword] = useState('')
   const [savingPassword, setSavingPassword] = useState(false)
@@ -223,6 +225,7 @@ export default function Configuracion() {
 
   const handleVerMiembros = async (instructor) => {
     setSelectedInstructor(instructor)
+    setSearchTermAsignar('') // Limpiar buscador al abrir panel
     const [miembrosRes, sociosRes, asignadosRes] = await Promise.all([
       getMiembrosInstructor(gymId, instructor.user_id),
       getSocios(gymId),
@@ -593,8 +596,25 @@ export default function Configuracion() {
 
           {/* Active plans */}
           {!planesLoading && planesActivos.length > 0 && (
-            <div className="space-y-2">
-              {planesActivos.map((plan) => (
+            <>
+              {/* Buscador de Planes */}
+              <div className="relative mb-4">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Buscar plan por nombre..."
+                  value={searchTermPlanes}
+                  onChange={(e) => setSearchTermPlanes(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-[#0D1117] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all shadow-inner"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {planesActivos
+                  .filter(p => !searchTermPlanes.trim() || p.nombre.toLowerCase().includes(searchTermPlanes.toLowerCase()))
+                  .map((plan) => (
                 <div
                   key={plan.id}
                   className="rounded-xl p-4 transition-all duration-200"
@@ -674,7 +694,14 @@ export default function Configuracion() {
                   </div>
                 </div>
               ))}
+              
+              {planesActivos.filter(p => !searchTermPlanes.trim() || p.nombre.toLowerCase().includes(searchTermPlanes.toLowerCase())).length === 0 && (
+                 <div className="text-center py-6 rounded-xl border border-dashed border-white/10 bg-white/[0.02]">
+                    <p className="text-gray-500 text-sm">No se encontraron planes con ese nombre.</p>
+                 </div>
+              )}
             </div>
+            </>
           )}
 
           {/* Inactive plans */}
@@ -711,7 +738,7 @@ export default function Configuracion() {
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                           <span style={{ color: '#4b5563', fontSize: 13 }}>
-                            {getCurrencyBadge(getPlanCurrency(plan))}{parseFloat(plan.precio_usd).toFixed(2)} � {plan.tipo === 'sesiones' ? `${plan.cantidad_sesiones} ses.` : `${plan.duracion_dias} dias`}
+                            {getCurrencyBadge(getPlanCurrency(plan))}{parseFloat(plan.precio_usd).toFixed(2)}  {plan.tipo === 'sesiones' ? `${plan.cantidad_sesiones} ses.` : `${plan.duracion_dias} dias`}
                           </span>
                           {getPlanBsEquivalent(plan, config) > 0 && (
                             <span style={{ color: '#374151', fontSize: 12 }}>
@@ -984,7 +1011,7 @@ export default function Configuracion() {
 
           {/* Panel asignación de miembros */}
           {showAsignar && selectedInstructor ? (
-            <div>
+            <div className="animate-in fade-in duration-200">
               <button
                 onClick={() => { setShowAsignar(false); setSelectedInstructor(null) }}
                 className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-5 transition-colors"
@@ -993,31 +1020,40 @@ export default function Configuracion() {
                 Volver a instructores
               </button>
 
-              <div className="flex items-center gap-3 mb-5 p-4 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)' }}>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-blue-400" style={{ background: 'rgba(59,130,246,0.15)' }}>
+              {/* Cabecera del Instructor (Más prominente) */}
+              <div className="flex items-center gap-4 mb-6 p-5 rounded-2xl shadow-lg" style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                <div className="w-14 h-14 rounded-full flex items-center justify-center font-black text-2xl text-blue-400" style={{ background: 'rgba(59,130,246,0.15)' }}>
                   {(selectedInstructor.nombre || selectedInstructor.email || '?').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-white font-semibold">{selectedInstructor.nombre || selectedInstructor.email}</p>
-                  <p className="text-gray-500 text-xs">{selectedInstructor.email} · {miembrosInstructor.length} miembro{miembrosInstructor.length !== 1 ? 's' : ''} asignado{miembrosInstructor.length !== 1 ? 's' : ''}</p>
+                  <p className="text-white font-bold text-xl">{selectedInstructor.nombre || selectedInstructor.email}</p>
+                  <p className="text-gray-400 text-sm">{selectedInstructor.email} · <span className="text-blue-400 font-semibold">{miembrosInstructor.length} asignado{miembrosInstructor.length !== 1 ? 's' : ''}</span></p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Asignados</p>
+              <div className="grid grid-cols-2 gap-6">
+                
+                {/* ─── COLUMNA IZQUIERDA: ASIGNADOS ─── */}
+                <div className="bg-[#111827]/60 p-5 rounded-2xl border border-white/5">
+                  <p className="text-xs text-gray-400 font-bold tracking-[0.15em] uppercase mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Miembros Asignados
+                  </p>
+                  
                   {miembrosInstructor.length === 0 ? (
-                    <p className="text-gray-600 text-sm py-4 text-center">Ningún miembro asignado aún</p>
+                    <div className="text-center py-10 rounded-xl border border-dashed border-white/10 bg-white/[0.02]">
+                      <p className="text-gray-500 text-sm">Ningún miembro asignado aún</p>
+                    </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2">
                       {miembrosInstructor.map(m => (
-                        <div key={m.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
+                        <div key={m.id} className="flex items-center justify-between px-4 py-3.5 rounded-xl transition-all" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
                           <div>
-                            <p className="text-white text-sm font-medium">{m.nombre}</p>
-                            <p className="text-gray-500 text-[11px]">{m.plan_actual || 'Sin plan'}</p>
+                            <p className="text-white text-sm font-bold">{m.nombre}</p>
+                            <p className="text-emerald-400/80 text-[11px] font-medium mt-0.5">{m.plan_actual || 'Sin plan'}</p>
                           </div>
-                          <button onClick={() => handleDesasignar(m.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                          <button onClick={() => handleDesasignar(m.id)} className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors" title="Quitar asignación">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                           </button>
                         </div>
                       ))}
@@ -1025,22 +1061,58 @@ export default function Configuracion() {
                   )}
                 </div>
 
-                <div>
-                  <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Agregar miembro</p>
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                {/* ─── COLUMNA DERECHA: DIRECTORIO Y BUSCADOR ─── */}
+                <div className="bg-[#111827]/60 p-5 rounded-2xl border border-white/5">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-xs text-gray-400 font-bold tracking-[0.15em] uppercase flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      Directorio
+                    </p>
+                    <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+                      {todosLosSocios.filter(s => !sociosYaAsignados.includes(s.id)).length} disponibles
+                    </span>
+                  </div>
+
+                  {/* BUSCADOR */}
+                  <div className="relative mb-5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre o cédula..."
+                      value={searchTermAsignar}
+                      onChange={(e) => setSearchTermAsignar(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-[#0D1117] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all shadow-inner"
+                    />
+                  </div>
+
+                  {/* LISTA FILTRADA */}
+                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-2">
                     {todosLosSocios
                       .filter(s => !sociosYaAsignados.includes(s.id))
+                      .filter(s => {
+                        if (!searchTermAsignar.trim()) return true;
+                        const term = searchTermAsignar.toLowerCase();
+                        return s.nombre.toLowerCase().includes(term) || (s.cedula && s.cedula.toLowerCase().includes(term));
+                      })
                       .map(s => (
-                        <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div key={s.id} className="flex items-center justify-between px-4 py-3.5 rounded-xl transition-all hover:bg-white/[0.08]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
                           <div>
-                            <p className="text-gray-300 text-sm">{s.nombre}</p>
-                            <p className="text-gray-600 text-[11px]">{s.plan_actual || 'Sin plan'}</p>
+                            <p className="text-white text-sm font-semibold">{s.nombre}</p>
+                            <p className="text-gray-400 text-[11px] mt-0.5"><span className="text-gray-500">CI: {s.cedula}</span> · {s.plan_actual || 'Sin plan'}</p>
                           </div>
-                          <button onClick={() => handleAsignar(s.id)} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-gray-600 hover:text-blue-400 transition-colors">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                          <button onClick={() => handleAsignar(s.id)} className="p-2.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors" title="Asignar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                           </button>
                         </div>
                       ))}
+
+                    {todosLosSocios.filter(s => !sociosYaAsignados.includes(s.id) && (s.nombre.toLowerCase().includes(searchTermAsignar.toLowerCase()) || (s.cedula && s.cedula.toLowerCase().includes(searchTermAsignar.toLowerCase())))).length === 0 && (
+                      <div className="text-center py-8 rounded-xl border border-dashed border-white/10 bg-white/[0.02]">
+                        <p className="text-gray-500 text-sm">No hay coincidencias</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1192,5 +1264,3 @@ export default function Configuracion() {
     </div>
   )
 }
-
-
