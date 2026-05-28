@@ -239,6 +239,16 @@ export default function PagoForm({ socio, onComplete, onCancel }) {
           <line x1="16" y1="14" x2="16" y2="17" />
         </svg>
       )
+    },
+    {
+      id: 'zelle',
+      label: 'Zelle',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 7h11L7 17h11" />
+          <line x1="11.5" y1="3" x2="11.5" y2="21" />
+        </svg>
+      )
     }
   ]
 
@@ -525,7 +535,7 @@ export default function PagoForm({ socio, onComplete, onCancel }) {
               {/* ── Método de pago ── */}
               <div>
                 <p className="text-[10px] text-gray-500 font-semibold tracking-[0.15em] uppercase mb-3">Método de pago</p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {metodos.map(function(metodo) {
                     return (
                       <button

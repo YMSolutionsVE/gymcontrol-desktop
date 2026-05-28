@@ -16,6 +16,29 @@ var obtenerFechaLocal = function() {
   return fechaLocal.toISOString().split('T')[0]
 }
 
+export var obtenerConfigCierreAuto = async function(gymId) {
+  if (!validarGymId(gymId)) return null
+  const { data, error } = await supabase
+    .from('gimnasios')
+    .select('cierre_auto_activo, cierre_auto_hora')
+    .eq('id', gymId)
+    .single()
+  
+  if (error) { console.error(error); return null }
+  return data
+}
+
+export var guardarConfigCierreAuto = async function(gymId, activo, hora) {
+  if (!validarGymId(gymId)) return { success: false }
+  const { error } = await supabase
+    .from('gimnasios')
+    .update({ cierre_auto_activo: activo, cierre_auto_hora: hora })
+    .eq('id', gymId)
+  
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
+
 export var obtenerResumenHoy = async function(gymId) {
   if (!validarGymId(gymId)) return null
 

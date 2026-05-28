@@ -8,6 +8,17 @@ function validarGymId(gymId) {
   return true
 }
 
+function generarRangoFechas(inicio, fin) {
+  var fechas = []
+  var actual = new Date(inicio + 'T12:00:00')
+  var final = new Date(fin + 'T12:00:00')
+  while (actual <= final) {
+    fechas.push(actual.toISOString().split('T')[0])
+    actual.setDate(actual.getDate() + 1)
+  }
+  return fechas
+}
+
 export var getIngresosPorRango = async function(fechaInicio, fechaFin, gymId) {
   if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido', data: [] }
   try {
@@ -17,21 +28,29 @@ export var getIngresosPorRango = async function(fechaInicio, fechaFin, gymId) {
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
       .eq('gym_id', gymId)
-      .order('fecha', { ascending: true })
 
     if (result.error) throw result.error
 
-    return {
-      success: true,
-      data: result.data.map(function(d) {
-        return {
-          fecha: d.fecha,
-          usd: Number(d.total_usd) || 0,
-          eur: Number(d.total_eur) || 0,
-          bs: Number(d.total_bs) || 0
-        }
-      })
-    }
+    var ingresosMap = {}
+    result.data.forEach(function(d) {
+      ingresosMap[d.fecha] = {
+        usd: Number(d.total_usd) || 0,
+        eur: Number(d.total_eur) || 0,
+        bs: Number(d.total_bs) || 0
+      }
+    })
+
+    var todasLasFechas = generarRangoFechas(fechaInicio, fechaFin)
+    var dataFinal = todasLasFechas.map(function(fecha) {
+      return {
+        fecha: fecha,
+        usd: ingresosMap[fecha] ? ingresosMap[fecha].usd : 0,
+        eur: ingresosMap[fecha] ? ingresosMap[fecha].eur : 0,
+        bs: ingresosMap[fecha] ? ingresosMap[fecha].bs : 0
+      }
+    })
+
+    return { success: true, data: dataFinal }
   } catch (error) {
     console.error('Error obteniendo ingresos:', error)
     return { success: false, error: error.message, data: [] }
@@ -55,13 +74,15 @@ export var getAsistenciasPorRango = async function(fechaInicio, fechaFin, gymId)
 
     var agrupado = {}
     result.data.forEach(function(a) {
-      var fecha = a.fecha_hora.split('T')[0]
-      agrupado[fecha] = (agrupado[fecha] || 0) + 1
+      var d = new Date(a.fecha_hora)
+      var fechaLocal = d.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
+      agrupado[fechaLocal] = (agrupado[fechaLocal] || 0) + 1
     })
 
-    var resultado = Object.entries(agrupado).map(function(entry) {
-      return { fecha: entry[0], cantidad: entry[1] }
-    }).sort(function(a, b) { return a.fecha.localeCompare(b.fecha) })
+    var todasLasFechas = generarRangoFechas(fechaInicio, fechaFin)
+    var resultado = todasLasFechas.map(function(fecha) {
+      return { fecha: fecha, cantidad: agrupado[fecha] || 0 }
+    })
 
     return { success: true, data: resultado }
   } catch (error) {
@@ -99,7 +120,6 @@ export var getMetricasResumen = async function(fechaInicio, fechaFin, gymId) {
 
     if (asistResult.error) throw asistResult.error
 
-    // Descuentos del período — directo de pagos
     var descResult = await supabase
       .from('pagos')
       .select('descuento, moneda_divisa')
@@ -141,15 +161,7 @@ export var getMetricasResumen = async function(fechaInicio, fechaFin, gymId) {
     return {
       success: false,
       error: error.message,
-      data: {
-        totalUSD: 0,
-        totalEUR: 0,
-        totalBS: 0,
-        totalAsistencias: 0,
-        totalDescuentos: 0,
-        cantidadDescuentos: 0,
-        descuentosPorMoneda: {}
-      }
+      data: { totalUSD: 0, totalEUR: 0, totalBS: 0, totalAsistencias: 0, totalDescuentos: 0, cantidadDescuentos: 0, descuentosPorMoneda: {} }
     }
   }
 }

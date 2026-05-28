@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getResumenDiario } from '../services/reportesService'
-import { obtenerResumenHoy, cerrarDia, obtenerCierrePorFecha } from '../services/cierreCajaService'
+import { obtenerResumenHoy, cerrarDia, obtenerCierrePorFecha, obtenerConfigCierreAuto, guardarConfigCierreAuto } from '../services/cierreCajaService'
 import { getIngresosPorRango, getAsistenciasPorRango, getMetricasResumen } from '../services/graficosService'
 import { useAuth } from '../context/AuthContext'
 
@@ -90,8 +90,12 @@ export default function Reportes() {
   var [datosAsistencias, setDatosAsistencias] = useState([])
   var [metricas, setMetricas] = useState({ totalUSD: 0, totalBS: 0, totalAsistencias: 0, totalDescuentos: 0, cantidadDescuentos: 0, descuentosPorMoneda: {} })
 
-  var [periodoExportacion, setPeriodoExportacion] = useState('semana')
   var [fechaCierreEspecifica, setFechaCierreEspecifica] = useState('')
+
+  // Estados para Cierre Automático
+  var [cierreAutoActivo, setCierreAutoActivo] = useState(false)
+  var [cierreAutoHora, setCierreAutoHora] = useState('22:00')
+  var [guardandoConfig, setGuardandoConfig] = useState(false)
 
   var cargarTodo = useCallback(async function(d, h) {
     if (!gymId) {
@@ -105,11 +109,16 @@ export default function Reportes() {
         getIngresosPorRango(d, h, gymId),
         getAsistenciasPorRango(d, h, gymId),
         getMetricasResumen(d, h, gymId),
+        obtenerConfigCierreAuto(gymId)
       ])
       if (results[0].success) setActividad(results[0].data)
       if (results[1].success) setDatosIngresos(results[1].data)
       if (results[2].success) setDatosAsistencias(results[2].data)
       if (results[3].success) setMetricas(results[3].data)
+      if (results[4]) {
+        setCierreAutoActivo(results[4].cierre_auto_activo)
+        setCierreAutoHora(results[4].cierre_auto_hora ? results[4].cierre_auto_hora.substring(0,5) : '22:00')
+      }
     } catch (err) {
       console.error('Reportes.jsx: error inesperado en cargarTodo:', err)
     } finally {
@@ -179,17 +188,24 @@ export default function Reportes() {
     if (res.success) { setCierreConsultado(res.data); setResumenHoy(null); setMostrarCierre(true) }
   }
 
+  var handleGuardarConfiguracion = async function() {
+    setGuardandoConfig(true)
+    var res = await guardarConfigCierreAuto(gymId, cierreAutoActivo, cierreAutoHora + ':00')
+    if (res.success) {
+      setMensaje({ text: 'Configuración de cierre automático guardada', type: 'success' })
+    } else {
+      setMensaje({ text: 'Error al guardar la configuración', type: 'error' })
+    }
+    setGuardandoConfig(false)
+    setTimeout(function() { setMensaje(null) }, 4000)
+  }
+
   var cierre = resumenHoy || cierreConsultado
   var esCierreNuevo = !!resumenHoy && !cierreConsultado
 
-  var periodoExport = [
-    { id: 'semana', label: 'Semana' }, { id: 'mes', label: 'Mes' },
-    { id: '3m', label: '3 meses' }, { id: '6m', label: '6 meses' }, { id: '1a', label: '1 año' }
-  ]
-
   var exportarPeriodoPDF = async function() {
     try {
-      await exportarCierresPeriodoPDF(periodoExportacion, gymId, gymNombre)
+      await exportarCierresPeriodoPDF(desde, hasta, gymId, gymNombre)
     } catch (err) {
       setMensaje({ text: err.message || 'Error al exportar PDF', type: 'error' })
       setTimeout(function() { setMensaje(null) }, 4000)
@@ -198,7 +214,7 @@ export default function Reportes() {
 
   var exportarPeriodoCSV = async function() {
     try {
-      await exportarCierresPorPeriodoCSV(periodoExportacion, gymId, gymNombre)
+      await exportarCierresPorPeriodoCSV(desde, hasta, gymId, gymNombre)
     } catch (err) {
       setMensaje({ text: err.message || 'Error al exportar XLSX', type: 'error' })
       setTimeout(function() { setMensaje(null) }, 4000)
@@ -386,57 +402,78 @@ export default function Reportes() {
         </div>
       </div>
 
-      <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-5">
-        <h3 className="text-white font-semibold text-sm mb-4">Exportar reportes</h3>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex gap-1.5">
-            {periodoExport.map(function(p) {
-              return (
-                <button
-                  key={p.id}
-                  onClick={function() { setPeriodoExportacion(p.id) }}
-                  className={'px-3 py-1.5 rounded-lg text-xs font-medium transition-all ' + (
-                    periodoExportacion === p.id
-                      ? 'bg-blue-500/15 text-blue-400 border border-blue-500/25'
-                      : 'bg-white/[0.04] text-gray-400 border border-white/[0.06] hover:bg-white/[0.08]'
-                  )}
-                >
-                  {p.label}
-                </button>
-              )
-            })}
+      {/* NUEVO PANEL: EXPORTACIÓN Y CONFIGURACIÓN */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Caja de Exportar Reportes */}
+        <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-5">
+          <h3 className="text-white font-semibold text-sm mb-4">Exportar Período Seleccionado</h3>
+          <p className="text-xs text-gray-500 mb-4">Los reportes se generarán desde el <strong className="text-gray-300">{desde}</strong> hasta el <strong className="text-gray-300">{hasta}</strong>.</p>
+          
+          <div className="flex items-center gap-3">
+            <button onClick={exportarPeriodoPDF} className="px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 flex-1 justify-center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+              Descargar PDF
+            </button>
+            <button onClick={exportarPeriodoCSV} className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 flex-1 justify-center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+              Descargar XLSX
+            </button>
           </div>
-          <div className="h-6 w-px bg-white/[0.06]" />
-          <button onClick={exportarPeriodoPDF} className="px-4 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-            PDF
-          </button>
-          <button onClick={exportarPeriodoCSV} className="px-4 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            XLSX
-          </button>
+
+          <div className="mt-6 pt-5 border-t border-white/[0.04]">
+            <h3 className="text-white font-semibold text-sm mb-3">Revisar cierre específico</h3>
+            <div className="flex items-center gap-3">
+              <input
+                type="date"
+                value={fechaCierreEspecifica}
+                max={hoyStr()}
+                onChange={function(e) { setFechaCierreEspecifica(e.target.value) }}
+                className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500/40 focus:outline-none transition-colors [color-scheme:dark] flex-1"
+              />
+              <button
+                onClick={function() { if (fechaCierreEspecifica) consultarCierre(fechaCierreEspecifica) }}
+                disabled={!fechaCierreEspecifica}
+                className="px-4 py-2 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 border border-white/[0.08] rounded-lg text-xs font-medium transition-all"
+              >
+                Buscar
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-white/[0.04]">
-          <span className="text-gray-500 text-xs font-medium shrink-0">Cierre por fecha:</span>
-          <input
-            type="date"
-            value={fechaCierreEspecifica}
-            max={hoyStr()}
-            onChange={function(e) { setFechaCierreEspecifica(e.target.value) }}
-            className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-gray-300 focus:border-blue-500/40 focus:outline-none transition-colors [color-scheme:dark]"
-          />
-          <button
-            onClick={function() { if (fechaCierreEspecifica) consultarCierre(fechaCierreEspecifica) }}
-            disabled={!fechaCierreEspecifica}
-            className="px-4 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 disabled:opacity-30 disabled:cursor-not-allowed text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            Ver y exportar PDF
-          </button>
+        {/* Caja de Configuración de Cierre Automático */}
+        <div className="bg-[#0D1117] rounded-xl border border-white/[0.06] p-5 flex flex-col">
+          <div className="flex items-start justify-between mb-2">
+            <div>
+              <h3 className="text-white font-semibold text-sm">Cierre de Caja Automático</h3>
+              <p className="text-xs text-gray-500 mt-1">El sistema registrará el cierre del día automáticamente si olvidas hacerlo.</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+              <input type="checkbox" className="sr-only peer" checked={cierreAutoActivo} onChange={function(e) { setCierreAutoActivo(e.target.checked) }} />
+              <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+          </div>
+
+          <div className={'transition-all duration-300 overflow-hidden ' + (cierreAutoActivo ? 'opacity-100 mt-4' : 'opacity-30 pointer-events-none mt-4')}>
+            <label className="text-gray-400 text-xs font-medium mb-1.5 block">Hora de ejecución (Local)</label>
+            <input
+              type="time"
+              value={cierreAutoHora}
+              onChange={function(e) { setCierreAutoHora(e.target.value) }}
+              disabled={!cierreAutoActivo}
+              className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-gray-300 focus:border-blue-500/40 focus:outline-none transition-colors [color-scheme:dark] w-full"
+            />
+          </div>
+
+          <div className="mt-auto pt-5 border-t border-white/[0.04]">
+            <button
+              onClick={handleGuardarConfiguracion}
+              disabled={guardandoConfig}
+              className="w-full py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              {guardandoConfig ? 'Guardando...' : 'Guardar configuración'}
+            </button>
+          </div>
         </div>
       </div>
 

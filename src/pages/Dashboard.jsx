@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getDashboardStats } from '../services/dashboardService'
+import { obtenerConfigCierreAuto, obtenerResumenHoy, cerrarDia } from '../services/cierreCajaService'
 import { useConfig } from '../hooks/useConfig'
 import { useAuth } from '../context/AuthContext'
 import StatCard from '../components/StatCard'
@@ -43,8 +44,41 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const { config } = useConfig()
-  const { gymId } = useAuth()
+  const { gymId, user } = useAuth()
   const [pulsing, setPulsing] = useState(false)
+
+  // CENTINELA SILENCIOSO PARA CIERRE DE CAJA AUTOMÁTICO
+  useEffect(() => {
+    if (!gymId || !user) return;
+
+    const centinelaCierre = async () => {
+      try {
+        const configAuto = await obtenerConfigCierreAuto(gymId);
+        if (!configAuto || !configAuto.cierre_auto_activo) return;
+
+        const ahora = new Date();
+        const horaLocal = ahora.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Caracas' });
+        const horaCierre = configAuto.cierre_auto_hora ? configAuto.cierre_auto_hora.substring(0, 5) : '22:00';
+
+        if (horaLocal >= horaCierre) {
+          const resumen = await obtenerResumenHoy(gymId);
+          if (resumen) {
+            // El backend ya protege contra duplicados si el cierre existe
+            await cerrarDia(user.id, resumen, gymId);
+          }
+        }
+      } catch (err) {
+        console.error("Error silencioso en Centinela de Cierre:", err);
+      }
+    };
+
+    // Revisión inmediata al cargar (Para el admin que cerró tarde o madrugó)
+    centinelaCierre();
+
+    // El centinela se queda dando rondas cada 60 segundos
+    const intervalo = setInterval(centinelaCierre, 60000);
+    return () => clearInterval(intervalo);
+  }, [gymId, user]);
 
   const loadStats = useCallback(async () => {
     if (!gymId) { setLoading(false); return }
@@ -90,12 +124,10 @@ export default function Dashboard() {
         .desktop-cyber-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #050505; z-index: 0; overflow: hidden; pointer-events: none; }
         .cyber-grid { position: absolute; inset: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 50px 50px; mask-image: radial-gradient(circle at center, black 40%, transparent 100%); -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%); }
         
-        /* FIX DE COLORES AQUÍ */
         @keyframes color-shift { 0% { filter: blur(100px) hue-rotate(0deg); } 100% { filter: blur(100px) hue-rotate(360deg); } }
         
         .desktop-orb-1, .desktop-orb-2 { position: absolute; border-radius: 50%; mix-blend-mode: screen; filter: blur(100px); transition: transform 0.5s ease, opacity 0.5s ease; }
         
-        /* Agregado el color-shift a la animación */
         .desktop-orb-1 { width: 45vw; height: 45vw; background: rgba(59,130,246,0.25); top: -10%; left: -5%; animation: float-1 20s infinite alternate ease-in-out, color-shift 15s linear infinite; }
         .desktop-orb-2 { width: 40vw; height: 40vw; background: rgba(16,185,129,0.2); bottom: -10%; right: -5%; animation: float-2 25s infinite alternate ease-in-out, color-shift 20s linear infinite reverse; }
         
