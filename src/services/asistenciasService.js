@@ -15,7 +15,7 @@ function validarGymId(gymId) {
   return true
 }
 
-// Registrar asistencia (sin bloqueo por pago — crea pendiente automaticamente)
+// Registrar asistencia (Auto-Reinicio y sin duplicar deudas)
 export const registrarAsistencia = async (gymId, socioId) => {
   if (!validarGymId(gymId)) {
     return { success: false, error: 'No se pudo identificar el gimnasio.' }
@@ -52,12 +52,15 @@ export const registrarAsistencia = async (gymId, socioId) => {
       return { success: false, error: 'Miembro inactivo' }
     }
 
-    // Determinar si necesita pago (para notificacion sutil, NO bloquea)
+    // --- LÓGICA DE AUTO-REINICIO ---
     var necesitaPago = false
+    var autoReinicio = false
+    var nuevoTotalSesiones = socio.sesiones_total
 
     if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
       if (!socio.sesiones_restantes || socio.sesiones_restantes <= 0) {
         necesitaPago = true
+        autoReinicio = true // Activamos el Auto-Reinicio
       }
     } else {
       if (!socio.fecha_vencimiento) {
@@ -72,59 +75,75 @@ export const registrarAsistencia = async (gymId, socioId) => {
       }
     }
 
-    // Registrar asistencia SIEMPRE (sin bloqueo por pago)
+    // Obtener los datos del plan para generar la deuda y el nuevo ciclo
+    var tipoPlan = socio.plan_actual || 'Sin plan'
+    var montoEsperado = 0
+    var monedaDivisa = 'USD'
+
+    if (necesitaPago && socio.plan_id) {
+      var { data: plan } = await supabase
+        .from('planes')
+        .select('nombre, precio_usd, moneda_referencia, cantidad_sesiones')
+        .eq('id', socio.plan_id)
+        .eq('gym_id', gymId)
+        .single()
+
+      if (plan) {
+        tipoPlan = plan.nombre
+        montoEsperado = plan.precio_usd
+        monedaDivisa = plan.moneda_referencia || 'USD'
+        // Si toca auto-reiniciar, sacamos la cantidad real del plan
+        if (autoReinicio && plan.cantidad_sesiones) {
+          nuevoTotalSesiones = parseInt(plan.cantidad_sesiones)
+        }
+      }
+    }
+
+    // Registrar asistencia en el historial
     var { error: asistError } = await supabase
       .from('asistencias')
       .insert({ socio_id: socioId, gym_id: gymId })
 
     if (asistError) throw asistError
 
-    // Descontar sesion SIEMPRE si es plan por sesiones (haya pagado o no)
+    // Aplicar el descuento o el Auto-Reinicio a la billetera
     if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
-      var nuevasUsadas = (socio.sesiones_usadas || 0) + 1
-      var nuevasRestantes = (socio.sesiones_restantes || 0) - 1
+      var nuevasUsadas, nuevasRestantes;
+
+      if (autoReinicio) {
+        // Se reinicia el contador de vida y se le resta la asistencia de hoy
+        nuevasUsadas = 1
+        nuevasRestantes = nuevoTotalSesiones - 1
+      } else {
+        // Resta normal
+        nuevasUsadas = (socio.sesiones_usadas || 0) + 1
+        nuevasRestantes = (socio.sesiones_restantes || 0) - 1
+      }
 
       var { error: updateError } = await supabase
         .from('socios')
         .update({
+          sesiones_total: nuevoTotalSesiones,
           sesiones_usadas: nuevasUsadas,
           sesiones_restantes: nuevasRestantes
         })
         .eq('id', socioId)
         .eq('gym_id', gymId)
+        
       if (updateError) throw updateError
       socio.sesiones_usadas = nuevasUsadas
       socio.sesiones_restantes = nuevasRestantes
     }
 
-    // Crear pago pendiente automaticamente si aplica (sin confirmacion)
+    // Crear pago pendiente en "Deudores" (SIN DUPLICAR)
     if (necesitaPago) {
-      var tipoPlan = socio.plan_actual || 'Sin plan'
-      var montoEsperado = 0
-      var monedaDivisa = 'USD'
-
-      if (socio.plan_id) {
-        var { data: plan } = await supabase
-          .from('planes')
-          .select('nombre, precio_usd, moneda_referencia')
-          .eq('id', socio.plan_id)
-          .eq('gym_id', gymId)
-          .single()
-
-        if (plan) {
-          tipoPlan = plan.nombre
-          montoEsperado = plan.precio_usd
-          monedaDivisa = plan.moneda_referencia || 'USD'
-        }
-      }
-
       var { data: pendienteExistente } = await supabase
         .from('pagos_pendientes')
         .select('id')
         .eq('gym_id', gymId)
         .eq('socio_id', socioId)
         .eq('confirmado', false)
-        .eq('fecha', fechaHoy)
+        // Ya no se filtra por fecha, evita deudas múltiples
         .maybeSingle()
 
       if (!pendienteExistente) {
@@ -136,7 +155,8 @@ export const registrarAsistencia = async (gymId, socioId) => {
             tipo_plan: tipoPlan,
             monto_esperado: montoEsperado,
             moneda_divisa: monedaDivisa,
-            confirmado: false
+            confirmado: false,
+            fecha: fechaHoy
           })
       }
     }

@@ -492,7 +492,8 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
       var socioYaActualizado = false
       if (pendiente.socios && pendiente.socios.plan_id === plan.id) {
         if (plan.tipo === 'sesiones') {
-          socioYaActualizado = (pendiente.socios.sesiones_restantes || 0) >= 0
+          // CAMBIO CLAVE: Usar > 0 para respetar el auto-reinicio
+          socioYaActualizado = (pendiente.socios.sesiones_restantes || 0) > 0
             && pendiente.socios.sesiones_total === parseInt(plan.cantidad_sesiones)
         } else {
           if (pendiente.socios.fecha_vencimiento) {
