@@ -89,6 +89,7 @@ export default function Reportes() {
   var [datosIngresos, setDatosIngresos] = useState([])
   var [datosAsistencias, setDatosAsistencias] = useState([])
   var [metricas, setMetricas] = useState({ totalUSD: 0, totalBS: 0, totalAsistencias: 0, totalDescuentos: 0, cantidadDescuentos: 0, descuentosPorMoneda: {} })
+  var [errorCarga, setErrorCarga] = useState(false)
 
   var [fechaCierreEspecifica, setFechaCierreEspecifica] = useState('')
 
@@ -103,6 +104,7 @@ export default function Reportes() {
       return
     }
     setLoading(true)
+    setErrorCarga(false)
     try {
       var results = await Promise.all([
         getResumenDiario(d, h, gymId),
@@ -111,16 +113,25 @@ export default function Reportes() {
         getMetricasResumen(d, h, gymId),
         obtenerConfigCierreAuto(gymId)
       ])
-      if (results[0].success) setActividad(results[0].data)
-      if (results[1].success) setDatosIngresos(results[1].data)
-      if (results[2].success) setDatosAsistencias(results[2].data)
-      if (results[3].success) setMetricas(results[3].data)
+
+      // FASE 6: si alguna query falló, mostrar error en vez de datos parciales
+      var alguno_fallo = results.slice(0, 4).some(function(r) { return !r.success })
+      if (alguno_fallo) {
+        setErrorCarga(true)
+        return
+      }
+
+      setActividad(results[0].data)
+      setDatosIngresos(results[1].data)
+      setDatosAsistencias(results[2].data)
+      setMetricas(results[3].data)
       if (results[4]) {
         setCierreAutoActivo(results[4].cierre_auto_activo)
         setCierreAutoHora(results[4].cierre_auto_hora ? results[4].cierre_auto_hora.substring(0,5) : '22:00')
       }
     } catch (err) {
-      console.error('Reportes.jsx: error inesperado en cargarTodo:', err)
+      console.error('Reportes.jsx: error en cargarTodo:', err)
+      setErrorCarga(true)
     } finally {
       setLoading(false)
     }
@@ -336,6 +347,30 @@ export default function Reportes() {
           mensaje.type === 'error' ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
         )}>
           {mensaje.text}
+        </div>
+      )}
+
+      {/* FASE 6: error de carga — mostrar en vez de datos vacíos/parciales */}
+      {errorCarga && !loading && (
+        <div
+          className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between"
+          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+        >
+          <div className="flex items-center gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span className="text-red-400 text-sm">No se pudieron cargar los datos. Verifica tu conexión.</span>
+          </div>
+          <button
+            onClick={function() { cargarTodo(desde, hasta) }}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}
+            onMouseEnter={function(e) { e.currentTarget.style.background = 'rgba(239,68,68,0.18)' }}
+            onMouseLeave={function(e) { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
+          >
+            Reintentar
+          </button>
         </div>
       )}
 

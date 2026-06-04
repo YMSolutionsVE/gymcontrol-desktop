@@ -28,14 +28,52 @@ function validarGymId(gymId) {
 
 var calcularNuevaFechaVencimiento = function(duracionDias) {
   if (!duracionDias || duracionDias <= 0) return null
-
   var hoy = new Date()
   hoy.setHours(0, 0, 0, 0)
-
   var nuevaFecha = new Date(hoy)
   nuevaFecha.setDate(nuevaFecha.getDate() + parseInt(duracionDias))
-
   return nuevaFecha.toISOString().split('T')[0]
+}
+
+// FASE 6: reintento para inserts (solo en errores de red, no de negocio)
+async function withRetry(fn, intentos = 3) {
+  for (var i = 0; i < intentos; i++) {
+    var result = await fn()
+    if (!result.error) return result
+    var esRed = result.error && /(fetch|network|timeout|connection|Failed to fetch|Load failed)/i.test(
+      result.error.message || String(result.error)
+    )
+    if (!esRed || i === intentos - 1) return result
+    await new Promise(function(r) { setTimeout(r, 500 * (i + 1)) })
+  }
+}
+
+// FASE 5: consultar si el socio tiene ciclo activo (gestiona sesiones)
+async function getCicloActivoSocio(gymId, socioId) {
+  var { data } = await supabase
+    .from('ciclos_entrenamiento')
+    .select('id, estado, pagado')
+    .eq('gym_id', gymId)
+    .eq('socio_id', socioId)
+    .eq('estado', 'activo')
+    .order('fecha_inicio', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data || null
+}
+
+// FASE 5: saldar ciclo de deuda tras confirmar pago (idempotente)
+async function saldaDeudaCiclo(gymId, socioId, pagoId) {
+  try {
+    const { error } = await supabase.rpc('saldar_deuda_ciclo', {
+      p_gym_id: gymId,
+      p_socio_id: socioId,
+      p_pago_id: pagoId || null
+    })
+    if (error) console.warn('saldar_deuda_ciclo warning:', error.message)
+  } catch (e) {
+    console.warn('saldar_deuda_ciclo no disponible:', e.message)
+  }
 }
 
 // -- Servicios --
@@ -103,7 +141,7 @@ export var registrarPago = async function(gymId, pagoData) {
     var hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
-    // -- Verificar pago duplicado (solo planes por días) --
+    // Verificar pago duplicado (solo planes por días)
     if (!es_cortesia && tipo_plan !== 'sesiones' && duracion_dias) {
       if (duracion_dias <= 1) {
         var fechaHoy = obtenerFechaLocal()
@@ -120,10 +158,7 @@ export var registrarPago = async function(gymId, pagoData) {
           .limit(1)
 
         if (pagoHoyResult.data && pagoHoyResult.data.length > 0) {
-          return {
-            success: false,
-            error: 'Este miembro ya tiene un pago registrado hoy.'
-          }
+          return { success: false, error: 'Este miembro ya tiene un pago registrado hoy.' }
         }
       } else {
         if (socio.fecha_vencimiento) {
@@ -139,7 +174,13 @@ export var registrarPago = async function(gymId, pagoData) {
       }
     }
 
-    // -- Calcular nueva fecha de vencimiento --
+    // FASE 5: verificar ciclo activo antes de tocar sesiones
+    var cicloActivo = null
+    if (tipo_plan === 'sesiones' && !es_cortesia) {
+      cicloActivo = await getCicloActivoSocio(gymId, socio_id)
+    }
+
+    // Calcular nueva fecha de vencimiento
     var nuevaFechaVencimiento = (es_cortesia || tipo_plan === 'sesiones')
       ? null
       : calcularNuevaFechaVencimiento(duracion_dias)
@@ -148,7 +189,7 @@ export var registrarPago = async function(gymId, pagoData) {
       return { success: false, error: 'No se pudo calcular la nueva fecha de vencimiento' }
     }
 
-    // -- Registrar pago --
+    // Registrar pago — FASE 6: con reintento en errores de red
     var pagoInsert = {
       gym_id: gymId,
       socio_id: socio_id,
@@ -165,31 +206,47 @@ export var registrarPago = async function(gymId, pagoData) {
       motivo_descuento: es_cortesia ? null : (motivoSanitizado || null)
     }
 
-    var pagoResult = await supabase
-      .from('pagos')
-      .insert([pagoInsert])
-      .select()
-      .single()
+    var pagoResult = await withRetry(() =>
+      supabase.from('pagos').insert([pagoInsert]).select().single()
+    )
 
-    if (pagoResult.error) throw pagoResult.error
+    if (pagoResult.error) {
+      var esRed = /(fetch|network|timeout|connection|Failed to fetch|Load failed)/i.test(
+        pagoResult.error.message || String(pagoResult.error)
+      )
+      throw new Error(esRed
+        ? 'No se pudo confirmar el pago. Verifica tu conexión e intenta nuevamente.'
+        : pagoResult.error.message
+      )
+    }
     var pago = pagoResult.data
 
-    // -- Actualizar socio --
+    // FASE 5: saldar deuda de ciclo (idempotente — si no hay deuda retorna sin_deuda)
+    await saldaDeudaCiclo(gymId, socio_id, pago.id)
+
+    // Actualizar socio
     var updateSocio = {}
 
     if (es_cortesia) {
       updateSocio.es_cortesia = true
       updateSocio.nota_cortesia = notaSanitizada
     } else if (tipo_plan === 'sesiones') {
-      var sesiones = parseInt(cantidad_sesiones) || 0
       updateSocio.plan_id = plan_id
       updateSocio.plan_actual = plan_nombre || null
       updateSocio.es_cortesia = false
       updateSocio.nota_cortesia = null
-      updateSocio.sesiones_total = sesiones
-      updateSocio.sesiones_usadas = 0
-      updateSocio.sesiones_restantes = sesiones
-      updateSocio.fecha_vencimiento = null
+
+      if (cicloActivo) {
+        // FASE 5: ciclo activo gestiona los contadores — NO resetear sesiones
+        // (saldar_deuda_ciclo ya marcó el ciclo como pagado=true)
+      } else {
+        // Sin ciclo activo → comportamiento legacy: resetear sesiones en socios
+        var sesiones = parseInt(cantidad_sesiones) || 0
+        updateSocio.sesiones_total = sesiones
+        updateSocio.sesiones_usadas = 0
+        updateSocio.sesiones_restantes = sesiones
+        updateSocio.fecha_vencimiento = null
+      }
     } else {
       updateSocio.plan_id = plan_id
       updateSocio.plan_actual = plan_nombre || null
@@ -223,7 +280,7 @@ export var registrarPago = async function(gymId, pagoData) {
 
   } catch (error) {
     console.error('Error registrando pago:', error)
-    return { success: false, error: error.message }
+    return { success: false, error: error.message || 'No se pudo registrar el pago. Intenta nuevamente.' }
   }
 }
 
@@ -306,10 +363,7 @@ export var getPagos = async function(gymId) {
 export var obtenerConfiguracion = async function(gymId) {
 
   if (!validarGymId(gymId)) {
-    return {
-      success: true,
-      data: { tasaBcv: null, tasaEur: null }
-    }
+    return { success: true, data: { tasaBcv: null, tasaEur: null } }
   }
 
   try {
@@ -331,10 +385,7 @@ export var obtenerConfiguracion = async function(gymId) {
     }
   } catch (error) {
     console.error('Error obteniendo configuración:', error)
-    return {
-      success: true,
-      data: { tasaBcv: null, tasaEur: null }
-    }
+    return { success: true, data: { tasaBcv: null, tasaEur: null } }
   }
 }
 
@@ -424,7 +475,7 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
       return { success: false, error: 'Este pago ya fue confirmado' }
     }
 
-    // Buscar plan: primero por nombre (tipo_plan), fallback por plan_id del socio
+    // Buscar plan
     var plan = null
 
     var planByNameResult = await supabase
@@ -449,10 +500,16 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
       }
     }
 
+    // FASE 5: verificar ciclo activo antes de insertar (para decidir si actualizar sesiones después)
+    var cicloActivo = null
+    if (plan && plan.tipo === 'sesiones') {
+      cicloActivo = await getCicloActivoSocio(gymId, pendiente.socio_id)
+    }
+
     var monedaPendiente = pendiente.moneda_divisa || 'USD'
     var montoDivisaFinal = montoUsd || pendiente.monto_esperado
 
-    // Insertar pago
+    // Insertar pago — FASE 6: con reintento en errores de red
     var pagoInsert = {
       gym_id: gymId,
       socio_id: pendiente.socio_id,
@@ -469,13 +526,22 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
       motivo_descuento: motivoSanitizado || null
     }
 
-    var pagoResult = await supabase
-      .from('pagos')
-      .insert(pagoInsert)
+    var pagoResult = await withRetry(() =>
+      supabase.from('pagos').insert(pagoInsert).select().single()
+    )
 
-    if (pagoResult.error) throw pagoResult.error
+    if (pagoResult.error) {
+      var esRed = /(fetch|network|timeout|connection|Failed to fetch|Load failed)/i.test(
+        pagoResult.error.message || String(pagoResult.error)
+      )
+      throw new Error(esRed
+        ? 'No se pudo confirmar el pago. Verifica tu conexión e intenta nuevamente.'
+        : pagoResult.error.message
+      )
+    }
+    var pagoConfirmado = pagoResult.data
 
-    // Marcar como confirmado
+    // Marcar pendiente como confirmado
     var confirmResult = await supabase
       .from('pagos_pendientes')
       .update({ confirmado: true })
@@ -484,15 +550,16 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
 
     if (confirmResult.error) throw confirmResult.error
 
+    // FASE 5: saldar ciclo de deuda (idempotente)
+    await saldaDeudaCiclo(gymId, pendiente.socio_id, pagoConfirmado.id)
+
     // Actualizar socio con info del plan
     var planActualizado = false
 
     if (plan) {
-      // Verificar si el socio ya tiene este plan activo (PWA ya lo seteo)
       var socioYaActualizado = false
       if (pendiente.socios && pendiente.socios.plan_id === plan.id) {
         if (plan.tipo === 'sesiones') {
-          // CAMBIO CLAVE: Usar > 0 para respetar el auto-reinicio
           socioYaActualizado = (pendiente.socios.sesiones_restantes || 0) > 0
             && pendiente.socios.sesiones_total === parseInt(plan.cantidad_sesiones)
         } else {
@@ -516,11 +583,16 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
         }
 
         if (plan.tipo === 'sesiones') {
-          var sesiones = parseInt(plan.cantidad_sesiones) || 0
-          updateSocio.sesiones_total = sesiones
-          updateSocio.sesiones_usadas = 0
-          updateSocio.sesiones_restantes = sesiones
-          updateSocio.fecha_vencimiento = null
+          if (cicloActivo) {
+            // FASE 5: ciclo activo gestiona los contadores — NO resetear sesiones
+          } else {
+            // Sin ciclo activo → comportamiento legacy
+            var sesiones = parseInt(plan.cantidad_sesiones) || 0
+            updateSocio.sesiones_total = sesiones
+            updateSocio.sesiones_usadas = 0
+            updateSocio.sesiones_restantes = sesiones
+            updateSocio.fecha_vencimiento = null
+          }
         } else {
           var nuevaFecha = calcularNuevaFechaVencimiento(plan.duracion_dias)
           updateSocio.sesiones_total = null
@@ -558,6 +630,6 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
 
   } catch (error) {
     console.error('Error confirmando pago:', error)
-    return { success: false, error: 'No se pudo confirmar el pago. Intenta nuevamente.' }
+    return { success: false, error: error.message || 'No se pudo confirmar el pago. Intenta nuevamente.' }
   }
 }

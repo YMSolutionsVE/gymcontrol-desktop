@@ -197,8 +197,12 @@ export default function PagoForm({ socio, onComplete, onCancel }) {
       motivo_descuento: form.aplicar_descuento ? form.motivo_descuento : null
     })
 
-    if (result.success) onComplete(result)
-    else setError(result.error)
+    if (result.success) {
+      onComplete(result)
+    } else {
+      // FASE 6: mensaje específico para error de red vs error de negocio
+      setError(result.error || 'No se pudo confirmar el pago. Intenta nuevamente.')
+    }
 
     setSaving(false)
   }

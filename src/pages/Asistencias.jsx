@@ -1,11 +1,121 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { registrarAsistencia, getAsistenciasHoy, getSociosParaAsistencia, eliminarAsistencia, registrarAsistenciaRetroactiva, eliminarAsistenciaPorFecha, getAsistenciasPorMes } from '../services/asistenciasService'
+import {
+  registrarAsistencia,
+  registrarAsistenciaForzada,
+  desmarcarAsistencia,
+  getAsistenciasHoy,
+  getSociosParaAsistencia,
+  registrarAsistenciaRetroactiva,
+  eliminarAsistenciaPorFecha,
+  getAsistenciasPorMes
+} from '../services/asistenciasService'
 import StatusBadge from '../components/StatusBadge'
 import AdminConfirmModal from '../components/AdminConfirmModal'
 
+// Modal simple de confirmacion (sin password — para marcar asistencia)
+function ConfirmModal({ titulo, descripcion, textoConfirmar, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #0D1117, #111827)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+          animation: 'gcFadeInUp 0.2s ease-out'
+        }}
+      >
+        <div className="px-6 pt-5 pb-3">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+            </div>
+            <h3 className="text-white font-bold text-base">{titulo}</h3>
+          </div>
+          {descripcion && <p className="text-gray-400 text-sm pl-12">{descripcion}</p>}
+        </div>
+        <div className="px-6 pb-5 flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#9ca3af' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150"
+            style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.18)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)' }}
+          >
+            {textoConfirmar}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Modal REQUIERE_PAGO — plan agotado, coach decide si registrar con deuda
+function RequierePagoModal({ socioNombre, onConfirmar, onCancelar }) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #0D1117, #111827)',
+          border: '1px solid rgba(234,179,8,0.2)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+          animation: 'gcFadeInUp 0.2s ease-out'
+        }}
+      >
+        <div className="px-6 pt-5 pb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            </div>
+            <h3 className="text-white font-bold text-base">Plan agotado / vencido</h3>
+          </div>
+          <p className="text-gray-400 text-sm mb-1">
+            <span className="text-white font-medium">{socioNombre}</span> no tiene sesiones disponibles o su plan venció.
+          </p>
+          <p className="text-gray-400 text-sm mt-2">
+            ¿Registrar la entrada como{' '}
+            <span className="text-yellow-400 font-semibold">pendiente de pago</span>{' '}
+            y continuar?
+          </p>
+        </div>
+        <div className="px-6 pb-5 flex gap-3">
+          <button
+            onClick={onCancelar}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#9ca3af' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirmar}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150"
+            style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)', color: '#facc15' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(234,179,8,0.18)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(234,179,8,0.1)' }}
+          >
+            Registrar como pendiente
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Calendario retroactivo ---
-function CalendarioRetroactivo({ gymId, socio, onClose, onUpdate }) {
+function CalendarioRetroactivo({ gymId, socio, userId, onClose, onUpdate }) {
   var hoy = new Date()
   var [year, setYear] = useState(hoy.getFullYear())
   var [month, setMonth] = useState(hoy.getMonth())
@@ -40,7 +150,7 @@ function CalendarioRetroactivo({ gymId, socio, onClose, onUpdate }) {
     setProcesando(dia)
 
     if (diasMarcados.has(fecha)) {
-      var result = await eliminarAsistenciaPorFecha(gymId, socio.id, fecha)
+      var result = await eliminarAsistenciaPorFecha(gymId, socio.id, fecha, userId)
       if (result.success) {
         setDiasMarcados(function (prev) {
           var next = new Set(prev)
@@ -49,7 +159,7 @@ function CalendarioRetroactivo({ gymId, socio, onClose, onUpdate }) {
         })
       }
     } else {
-      var result2 = await registrarAsistenciaRetroactiva(gymId, socio.id, fecha)
+      var result2 = await registrarAsistenciaRetroactiva(gymId, socio.id, fecha, userId)
       if (result2.success) {
         setDiasMarcados(function (prev) { return new Set([].concat(Array.from(prev), [fecha])) })
       }
@@ -227,7 +337,7 @@ function CalendarioRetroactivo({ gymId, socio, onClose, onUpdate }) {
 }
 
 export default function Asistencias() {
-  var { gymId } = useAuth()
+  var { gymId, user } = useAuth()
 
   var [searchTerm, setSearchTerm] = useState('')
   var [todosLosSocios, setTodosLosSocios] = useState([])
@@ -236,9 +346,16 @@ export default function Asistencias() {
   var [message, setMessage] = useState(null)
   var [loading, setLoading] = useState(true)
 
-  // Estado para desmarcar asistencia (requiere admin)
+  // Modal desmarcar (requiere password admin)
   var [showAdminModal, setShowAdminModal] = useState(false)
   var [asistenciaAEliminar, setAsistenciaAEliminar] = useState(null)
+
+  // Modal marcar (confirmacion simple, sin password)
+  var [showConfirmMarcar, setShowConfirmMarcar] = useState(false)
+  var [socioARegistrar, setSocioARegistrar] = useState(null)
+
+  // Modal REQUIERE_PAGO (plan agotado)
+  var [showRequierePago, setShowRequierePago] = useState(false)
 
   // Calendario retroactivo
   var [socioCalendario, setSocioCalendario] = useState(null)
@@ -278,45 +395,72 @@ export default function Asistencias() {
     setTimeout(function () { setMessage(null) }, 4000)
   }
 
-  // Helper para detectar si un socio necesita pago
-  var socioNecesitaPago = function (socio) {
-    if (socio.es_cortesia) return false
-    if (socio.sesiones_total !== null && socio.sesiones_total !== undefined) {
-      return !socio.sesiones_restantes || socio.sesiones_restantes <= 0
-    }
-    if (!socio.fecha_vencimiento) return true
-    var hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-    var vencimiento = new Date(socio.fecha_vencimiento + 'T00:00:00')
-    return vencimiento < hoy
+  // --- FASE 2: Iniciar marcar → muestra modal de confirmacion simple ---
+  var handleIniciarRegistrar = function (socio) {
+    setSocioARegistrar(socio)
+    setShowConfirmMarcar(true)
   }
 
-  // --- Registrar asistencia (sin bloqueo por pago) ---
-  var handleRegistrar = async function (socioId) {
+  // --- FASE 1: Confirmar marcar → llama RPC ---
+  var handleConfirmarRegistrar = async function () {
+    setShowConfirmMarcar(false)
+    if (!socioARegistrar) return
     setMessage(null)
-    var result = await registrarAsistencia(gymId, socioId)
+
+    var result = await registrarAsistencia(gymId, socioARegistrar.id, user?.id)
 
     if (result.success) {
-      if (result.conPendiente) {
-        mostrarMensaje('Asistencia registrada — ' + result.socio.nombre + ' tiene pago pendiente', 'warning')
-      } else {
-        mostrarMensaje('Asistencia registrada: ' + result.socio.nombre, 'success')
-      }
+      mostrarMensaje(
+        result.esDeudor
+          ? 'Asistencia registrada — ' + socioARegistrar.nombre + ' tiene pago pendiente'
+          : 'Asistencia registrada: ' + socioARegistrar.nombre,
+        result.esDeudor ? 'warning' : 'success'
+      )
+      setSocioARegistrar(null)
+      cargarDatos()
+    } else if (result.codigo === 'REQUIERE_PAGO') {
+      // FASE 3: plan agotado → preguntar si registrar con deuda
+      setShowRequierePago(true)
+    } else {
+      mostrarMensaje(result.error, 'error')
+      setSocioARegistrar(null)
+    }
+  }
+
+  // --- FASE 3: Coach confirma registrar con deuda ---
+  var handleConfirmarForzar = async function () {
+    setShowRequierePago(false)
+    if (!socioARegistrar) return
+
+    var result = await registrarAsistenciaForzada(gymId, socioARegistrar.id, user?.id)
+
+    if (result.success) {
+      mostrarMensaje('Asistencia registrada como pendiente de pago — ' + socioARegistrar.nombre, 'warning')
       cargarDatos()
     } else {
       mostrarMensaje(result.error, 'error')
     }
+    setSocioARegistrar(null)
   }
 
+  var handleCancelarRegistrar = function () {
+    setShowConfirmMarcar(false)
+    setShowRequierePago(false)
+    setSocioARegistrar(null)
+  }
+
+  // --- FASE 2: Iniciar desmarcar → muestra AdminConfirmModal (requiere password) ---
   var handleIniciarDesmarcar = function (asistencia) {
     setAsistenciaAEliminar(asistencia)
     setShowAdminModal(true)
   }
 
+  // --- FASE 1+2: Confirmar desmarcar → llama RPC desmarcar_asistencia_v2 ---
   var handleConfirmarDesmarcar = async function () {
     setShowAdminModal(false)
     if (!asistenciaAEliminar) return
 
-    var result = await eliminarAsistencia(gymId, asistenciaAEliminar.id, asistenciaAEliminar.socio_id)
+    var result = await desmarcarAsistencia(gymId, asistenciaAEliminar.socio_id, user?.id)
 
     if (result.success) {
       mostrarMensaje('Asistencia desmarcada: ' + (asistenciaAEliminar.socios ? asistenciaAEliminar.socios.nombre : 'Miembro'), 'success')
@@ -331,6 +475,52 @@ export default function Asistencias() {
   var handleCancelarDesmarcar = function () {
     setShowAdminModal(false)
     setAsistenciaAEliminar(null)
+  }
+
+  // FASE 4: calcular estado desde cicloActivo; fallback a socios.*
+  var calcularBadgesCiclo = function (socio) {
+    var ciclo = socio.cicloActivo
+    if (ciclo) {
+      var restantes = (ciclo.sesiones_total || 0) - (ciclo.sesiones_usadas || 0)
+      return {
+        hasCiclo: true,
+        esDeudor: !ciclo.pagado,
+        esAgotado: ciclo.estado === 'agotado',
+        esPorVencer: ciclo.estado === 'activo' && restantes <= 3 && restantes > 0,
+        sesionesUsadas: ciclo.sesiones_usadas,
+        sesionesTotal: ciclo.sesiones_total,
+        sesionesRestantes: restantes
+      }
+    }
+    // Fallback: datos de socios.*
+    var tieneSessiones = socio.sesiones_total !== null && socio.sesiones_total !== undefined
+    var restantesFallback = tieneSessiones ? (socio.sesiones_restantes || 0) : null
+    var necesitaPago = false
+    if (!socio.es_cortesia) {
+      if (tieneSessiones) {
+        necesitaPago = !socio.sesiones_restantes || socio.sesiones_restantes <= 0
+      } else if (!socio.fecha_vencimiento) {
+        necesitaPago = true
+      } else {
+        var hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+        necesitaPago = new Date(socio.fecha_vencimiento + 'T00:00:00') < hoy
+      }
+    }
+    return {
+      hasCiclo: false,
+      esDeudor: necesitaPago,
+      esAgotado: false,
+      esPorVencer: false,
+      sesionesUsadas: socio.sesiones_usadas,
+      sesionesTotal: tieneSessiones ? socio.sesiones_total : null,
+      sesionesRestantes: restantesFallback
+    }
+  }
+
+  // Compat: necesitaPago para el badge amarillo (usa calcularBadgesCiclo internamente)
+  var socioNecesitaPago = function (socio) {
+    if (socio.es_cortesia) return false
+    return calcularBadgesCiclo(socio).esDeudor
   }
 
   return (
@@ -447,6 +637,7 @@ export default function Asistencias() {
                 var esNuevo = socio.totalAsistencias === 0
                 var yaMarcoHoy = socio.marcoHoy
                 var necesitaPago = socioNecesitaPago(socio)
+                var bc = calcularBadgesCiclo(socio)
 
                 return (
                   <div key={socio.id}>
@@ -472,7 +663,7 @@ export default function Asistencias() {
                         background: yaMarcoHoy
                           ? 'linear-gradient(145deg, rgba(16,185,129,0.04), rgba(16,185,129,0.02))'
                           : 'linear-gradient(145deg, #0D1117, #111827)',
-                        border: '1px solid ' + (yaMarcoHoy ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.06)'),
+                        border: '1px solid ' + (yaMarcoHoy ? 'rgba(16,185,129,0.12)' : bc.esDeudor ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.06)'),
                       }}
                       onMouseEnter={function (e) {
                         if (!yaMarcoHoy) {
@@ -482,7 +673,7 @@ export default function Asistencias() {
                       }}
                       onMouseLeave={function (e) {
                         if (!yaMarcoHoy) {
-                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
+                          e.currentTarget.style.borderColor = yaMarcoHoy ? 'rgba(16,185,129,0.12)' : bc.esDeudor ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.06)'
                           e.currentTarget.style.transform = 'translateX(0)'
                         }
                       }}
@@ -512,11 +703,41 @@ export default function Asistencias() {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                               <p className="text-white font-semibold text-[15px] truncate">{socio.nombre}</p>
-                              <StatusBadge
-                                fechaVencimiento={socio.fecha_vencimiento}
-                                sesionesTotal={socio.sesiones_total}
-                                sesionesRestantes={socio.sesiones_restantes}
-                              />
+
+                              {/* StatusBadge solo para planes por fecha (sin ciclo) */}
+                              {!bc.hasCiclo && (
+                                <StatusBadge
+                                  fechaVencimiento={socio.fecha_vencimiento}
+                                  sesionesTotal={socio.sesiones_total}
+                                  sesionesRestantes={socio.sesiones_restantes}
+                                />
+                              )}
+
+                              {/* FASE 4: badge Agotado */}
+                              {bc.esAgotado && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1"
+                                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>
+                                  Agotado
+                                </span>
+                              )}
+
+                              {/* FASE 4: badge Deudor */}
+                              {bc.esDeudor && !bc.esAgotado && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1"
+                                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>
+                                  <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                                  Deudor
+                                </span>
+                              )}
+
+                              {/* FASE 4: badge Por vencer */}
+                              {bc.esPorVencer && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                  style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#facc15' }}>
+                                  Por vencer
+                                </span>
+                              )}
+
                               {esNuevo && (
                                 <span
                                   className="px-2 py-0.5 rounded-full text-[10px] font-medium"
@@ -542,20 +763,6 @@ export default function Asistencias() {
                                   Marco hoy
                                 </span>
                               )}
-                              {/* Indicador sutil de pago pendiente */}
-                              {necesitaPago && (
-                                <span
-                                  className="px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1"
-                                  style={{
-                                    background: 'rgba(234,179,8,0.06)',
-                                    border: '1px solid rgba(234,179,8,0.12)',
-                                    color: 'rgba(251,191,36,0.7)',
-                                  }}
-                                >
-                                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                                  Pago pendiente
-                                </span>
-                              )}
                             </div>
                             <div className="flex items-center gap-3 text-sm" style={{ color: '#6b7280' }}>
                               <span>{'CI: ' + socio.cedula}</span>
@@ -564,11 +771,21 @@ export default function Asistencias() {
                                   {socio.totalAsistencias + ' asistencia' + (socio.totalAsistencias !== 1 ? 's' : '')}
                                 </span>
                               )}
-                              {socio.sesiones_total !== null && socio.sesiones_total !== undefined && (
-                                <span className="text-xs font-medium" style={{
-                                  color: socio.sesiones_restantes <= 0 ? '#f87171' : socio.sesiones_restantes <= 2 ? '#fbbf24' : '#60a5fa'
+                              {/* FASE 4: Sesión X/Y desde ciclo (o fallback) */}
+                              {bc.sesionesTotal !== null && bc.sesionesTotal !== undefined && (
+                                <span className="text-xs font-semibold px-1.5 py-0.5 rounded-md" style={{
+                                  background: bc.esAgotado || bc.sesionesRestantes <= 0
+                                    ? 'rgba(239,68,68,0.08)'
+                                    : bc.esPorVencer
+                                      ? 'rgba(234,179,8,0.08)'
+                                      : 'rgba(59,130,246,0.08)',
+                                  color: bc.esAgotado || bc.sesionesRestantes <= 0
+                                    ? '#f87171'
+                                    : bc.esPorVencer
+                                      ? '#fbbf24'
+                                      : '#60a5fa'
                                 }}>
-                                  {socio.sesiones_restantes + '/' + socio.sesiones_total + ' ses.'}
+                                  {'Ses. ' + bc.sesionesUsadas + '/' + bc.sesionesTotal}
                                 </span>
                               )}
                             </div>
@@ -603,7 +820,7 @@ export default function Asistencias() {
                           {/* Boton registrar entrada */}
                           <button
                             disabled={yaMarcoHoy}
-                            onClick={function () { handleRegistrar(socio.id) }}
+                            onClick={function () { handleIniciarRegistrar(socio) }}
                             className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2"
                             style={yaMarcoHoy ? {
                               background: 'rgba(255,255,255,0.03)',
@@ -698,7 +915,7 @@ export default function Asistencias() {
                         {new Date(a.fecha_hora).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
                       </p>
 
-                      {/* Boton desmarcar */}
+                      {/* Boton desmarcar (requiere password admin via AdminConfirmModal) */}
                       <button
                         onClick={function () { handleIniciarDesmarcar(a) }}
                         className="opacity-0 group-hover:opacity-100 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1.5"
@@ -733,11 +950,31 @@ export default function Asistencias() {
         </>
       )}
 
-      {/* Modal Admin para desmarcar asistencia */}
+      {/* Modal confirmacion marcar (simple, sin password) */}
+      {showConfirmMarcar && socioARegistrar && (
+        <ConfirmModal
+          titulo="Registrar asistencia"
+          descripcion={'¿Registrar la entrada de ' + socioARegistrar.nombre + ' hoy?'}
+          textoConfirmar="Confirmar entrada"
+          onConfirm={handleConfirmarRegistrar}
+          onCancel={handleCancelarRegistrar}
+        />
+      )}
+
+      {/* Modal REQUIERE_PAGO (plan agotado/vencido) */}
+      {showRequierePago && socioARegistrar && (
+        <RequierePagoModal
+          socioNombre={socioARegistrar.nombre}
+          onConfirmar={handleConfirmarForzar}
+          onCancelar={handleCancelarRegistrar}
+        />
+      )}
+
+      {/* Modal desmarcar (requiere password de admin) */}
       {showAdminModal && (
         <AdminConfirmModal
           titulo="Desmarcar asistencia"
-          descripcion={'Se eliminara la entrada de ' + (asistenciaAEliminar && asistenciaAEliminar.socios ? asistenciaAEliminar.socios.nombre : 'este miembro') + ' de hoy. Si es plan por sesiones, se devolvera la sesion.'}
+          descripcion={'Se eliminara la entrada de ' + (asistenciaAEliminar && asistenciaAEliminar.socios ? asistenciaAEliminar.socios.nombre : 'este miembro') + ' de hoy.'}
           textoConfirmar="Desmarcar entrada"
           colorConfirmar="yellow"
           onConfirm={handleConfirmarDesmarcar}
@@ -750,6 +987,7 @@ export default function Asistencias() {
         <CalendarioRetroactivo
           gymId={gymId}
           socio={socioCalendario}
+          userId={user?.id}
           onClose={function () { setSocioCalendario(null) }}
           onUpdate={cargarDatos}
         />
