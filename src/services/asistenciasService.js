@@ -15,6 +15,19 @@ function validarGymId(gymId) {
   return true
 }
 
+// Reintento ante errores de red (no de negocio)
+async function withRetry(fn, intentos = 3) {
+  for (let i = 0; i < intentos; i++) {
+    const result = await fn()
+    if (!result.error) return result
+    const esRed = result.error && /(fetch|network|timeout|connection|Failed to fetch|Load failed)/i.test(
+      result.error.message || String(result.error)
+    )
+    if (!esRed || i === intentos - 1) return result
+    await new Promise(r => setTimeout(r, 500 * (i + 1)))
+  }
+}
+
 // FASE 1: Registrar asistencia via RPC — elimina lost updates por read-modify-write
 export const registrarAsistencia = async (gymId, socioId, registradoPor) => {
   if (!validarGymId(gymId)) return { success: false, error: 'No se pudo identificar el gimnasio.' }
@@ -78,33 +91,28 @@ export const eliminarAsistencia = async (gymId, asistenciaId, socioId, registrad
   return desmarcarAsistencia(gymId, socioId, registradoPor)
 }
 
-// Retroactivo: solo inserta la fila, sin tocar contadores (gestionados por ciclos_entrenamiento)
+// Retroactivo: RPC maneja insert + descuento de ciclo + anti-duplicado + log 'retroactiva'
 export const registrarAsistenciaRetroactiva = async (gymId, socioId, fecha, registradoPor) => {
   if (!validarGymId(gymId)) return { success: false, error: 'gym_id requerido' }
   if (!fecha) return { success: false, error: 'Fecha requerida' }
 
   try {
-    const inicio = new Date(fecha + 'T00:00:00')
-    const fin = new Date(fecha + 'T23:59:59')
+    const result = await withRetry(() => supabase.rpc('registrar_asistencia_retroactiva_v2', {
+      p_gym_id: gymId,
+      p_socio_id: socioId,
+      p_fecha: fecha,
+      p_registrado_por: registradoPor || 'system'
+    }))
 
-    const { data: existente } = await supabase
-      .from('asistencias')
-      .select('id')
-      .eq('gym_id', gymId)
-      .eq('socio_id', socioId)
-      .gte('fecha_hora', inicio.toISOString())
-      .lte('fecha_hora', fin.toISOString())
-      .maybeSingle()
+    if (result.error) throw result.error
 
-    if (existente) return { success: false, error: 'Ya tiene asistencia ese dia', yaExiste: true }
+    const data = result.data
+    // success === false del RPC indica que el día ya tenía asistencia (anti-duplicado)
+    if (!data || !data.success) {
+      return { success: false, error: 'Ya tiene asistencia ese dia', yaExiste: true }
+    }
 
-    const fechaHora = new Date(fecha + 'T12:00:00')
-    const { error: asistError } = await supabase
-      .from('asistencias')
-      .insert({ socio_id: socioId, gym_id: gymId, fecha_hora: fechaHora.toISOString() })
-
-    if (asistError) throw asistError
-    return { success: true }
+    return { success: true, descontoSesion: !!data.desconto_sesion, cicloId: data.ciclo_id }
   } catch (error) {
     console.error('Error registrando asistencia retroactiva:', error)
     return { success: false, error: error.message }

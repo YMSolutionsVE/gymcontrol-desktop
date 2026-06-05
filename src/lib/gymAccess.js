@@ -40,7 +40,7 @@ export const getNextBillingDate = (gym) => {
   if (!gym?.created_at) return null
 
   const today = getCaracasStartOfDay()
-  const anchorDay = getAnchorDay(gym.created_at)
+  const anchorDay = 1
 
   let dueDate = buildDateForDay(today.getFullYear(), today.getMonth(), anchorDay)
   if (dueDate < today) {
@@ -132,9 +132,9 @@ export const getCommercialNotice = (role, gym) => {
         kind: 'billing',
         tone: daysUntilBilling === 0 ? 'warning' : 'info',
         title: daysUntilBilling === 0
-          ? 'Tu mensualidad vence hoy'
-          : `Tu mensualidad vence en ${daysUntilBilling} día${daysUntilBilling === 1 ? '' : 's'}`,
-        message: `Recuerda estar al día con el pago antes del ${formatDateEs(nextBillingDate)} y contactar a YM Solutions si necesitas apoyo.`,
+          ? 'Tu mensualidad se renueva hoy'
+          : `Pago mensual en ${daysUntilBilling} día${daysUntilBilling === 1 ? '' : 's'}`,
+        message: 'Recordatorio de pago de tu licencia GymControl. Contacta a YM Solutions ante cualquier duda.',
       }
     }
   }

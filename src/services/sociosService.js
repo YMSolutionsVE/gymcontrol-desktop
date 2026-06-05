@@ -60,6 +60,34 @@ function validarGymId(gymId) {
   return true
 }
 
+// Si el plan recién asignado es de sesiones, crea el ciclo inicial marcado como deudor
+// (SocioForm no cobra; el pago se registra aparte → nace con pagado=false)
+async function crearCicloInicialSiSesiones(gymId, socioId, planId) {
+  if (!planId) return
+  try {
+    const { data: plan } = await supabase
+      .from('planes')
+      .select('tipo, cantidad_sesiones')
+      .eq('id', planId)
+      .single()
+
+    if (plan && plan.tipo === 'sesiones' && plan.cantidad_sesiones) {
+      const { error } = await supabase.rpc('renovar_ciclo', {
+        p_gym_id: gymId,
+        p_socio_id: socioId,
+        p_sesiones: parseInt(plan.cantidad_sesiones),
+        p_plan_id: planId,
+        p_pago_id: null,
+        p_pagado: false,
+        p_pago_id: null
+      })
+      if (error) console.warn('crearCicloInicialSiSesiones warning:', error.message)
+    }
+  } catch (e) {
+    console.warn('crearCicloInicialSiSesiones error:', e.message)
+  }
+}
+
 // ── Servicios ──
 
 export const getSocios = async (gymId) => {
@@ -195,6 +223,12 @@ export const createSocio = async (gymId, socioData) => {
       .select()
       .single()
     if (error) throw error
+
+    // Si el socio nace con un plan de sesiones, crear su ciclo inicial
+    if (data.plan_id) {
+      await crearCicloInicialSiSesiones(gymId, data.id, data.plan_id)
+    }
+
     return { success: true, data }
   } catch (error) {
     console.error('Error registrando socio:', error)

@@ -4,7 +4,7 @@
   "description": "GymControl by YM Solutions",
   "author": {
     "name": "YM Solutions",
-    "email": "contacto@ymsolutions.online"
+    "email": "admin@ymsolutions.online"
   },
   "main": "electron/main.cjs",
   "type": "module",

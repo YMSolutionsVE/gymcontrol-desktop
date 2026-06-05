@@ -65,14 +65,30 @@ async function getCicloActivoSocio(gymId, socioId) {
 // FASE 5: saldar ciclo de deuda tras confirmar pago (idempotente)
 async function saldaDeudaCiclo(gymId, socioId, pagoId) {
   try {
-    const { error } = await supabase.rpc('saldar_deuda_ciclo', {
+    const result = await withRetry(() => supabase.rpc('saldar_deuda_ciclo', {
       p_gym_id: gymId,
       p_socio_id: socioId,
       p_pago_id: pagoId || null
-    })
-    if (error) console.warn('saldar_deuda_ciclo warning:', error.message)
+    }))
+    if (result.error) console.warn('saldar_deuda_ciclo warning:', result.error.message)
   } catch (e) {
     console.warn('saldar_deuda_ciclo no disponible:', e.message)
+  }
+}
+
+// Crear o renovar ciclo de sesiones tras pago (idempotente, también sincroniza socios.sesiones_*)
+async function renovarCiclo(gymId, socioId, sesiones, planId, pagoId) {
+  try {
+    const result = await withRetry(() => supabase.rpc('renovar_ciclo', {
+      p_gym_id: gymId,
+      p_socio_id: socioId,
+      p_sesiones: parseInt(sesiones) || 0,
+      p_plan_id: planId || null,
+      p_pago_id: pagoId || null
+    }))
+    if (result.error) console.warn('renovar_ciclo warning:', result.error.message)
+  } catch (e) {
+    console.warn('renovar_ciclo error:', e.message)
   }
 }
 
@@ -221,8 +237,17 @@ export var registrarPago = async function(gymId, pagoData) {
     }
     var pago = pagoResult.data
 
-    // FASE 5: saldar deuda de ciclo (idempotente — si no hay deuda retorna sin_deuda)
-    await saldaDeudaCiclo(gymId, socio_id, pago.id)
+    // Gestionar ciclo de sesiones según estado actual
+    if (tipo_plan === 'sesiones' && !es_cortesia) {
+      if (cicloActivo && !cicloActivo.pagado) {
+        // Tiene ciclo con deuda → saldar (no crear uno nuevo)
+        await saldaDeudaCiclo(gymId, socio_id, pago.id)
+      } else {
+        // Sin ciclo o ciclo ya pagado → crear/renovar ciclo
+        // renovar_ciclo también sincroniza socios.sesiones_* automáticamente
+        await renovarCiclo(gymId, socio_id, cantidad_sesiones, plan_id, pago.id)
+      }
+    }
 
     // Actualizar socio
     var updateSocio = {}
@@ -235,18 +260,8 @@ export var registrarPago = async function(gymId, pagoData) {
       updateSocio.plan_actual = plan_nombre || null
       updateSocio.es_cortesia = false
       updateSocio.nota_cortesia = null
-
-      if (cicloActivo) {
-        // FASE 5: ciclo activo gestiona los contadores — NO resetear sesiones
-        // (saldar_deuda_ciclo ya marcó el ciclo como pagado=true)
-      } else {
-        // Sin ciclo activo → comportamiento legacy: resetear sesiones en socios
-        var sesiones = parseInt(cantidad_sesiones) || 0
-        updateSocio.sesiones_total = sesiones
-        updateSocio.sesiones_usadas = 0
-        updateSocio.sesiones_restantes = sesiones
-        updateSocio.fecha_vencimiento = null
-      }
+      updateSocio.fecha_vencimiento = null
+      // sesiones_total/usadas/restantes son sincronizadas por renovar_ciclo/saldar_deuda_ciclo
     } else {
       updateSocio.plan_id = plan_id
       updateSocio.plan_actual = plan_nombre || null
@@ -550,8 +565,14 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
 
     if (confirmResult.error) throw confirmResult.error
 
-    // FASE 5: saldar ciclo de deuda (idempotente)
-    await saldaDeudaCiclo(gymId, pendiente.socio_id, pagoConfirmado.id)
+    // Gestionar ciclo de sesiones según estado actual
+    if (plan && plan.tipo === 'sesiones') {
+      if (cicloActivo && !cicloActivo.pagado) {
+        await saldaDeudaCiclo(gymId, pendiente.socio_id, pagoConfirmado.id)
+      } else {
+        await renovarCiclo(gymId, pendiente.socio_id, plan.cantidad_sesiones, plan.id, pagoConfirmado.id)
+      }
+    }
 
     // Actualizar socio con info del plan
     var planActualizado = false
@@ -559,17 +580,13 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
     if (plan) {
       var socioYaActualizado = false
       if (pendiente.socios && pendiente.socios.plan_id === plan.id) {
-        if (plan.tipo === 'sesiones') {
-          socioYaActualizado = (pendiente.socios.sesiones_restantes || 0) > 0
-            && pendiente.socios.sesiones_total === parseInt(plan.cantidad_sesiones)
-        } else {
-          if (pendiente.socios.fecha_vencimiento) {
-            var hoyCheck = new Date()
-            hoyCheck.setHours(0, 0, 0, 0)
-            var vencCheck = new Date(pendiente.socios.fecha_vencimiento + 'T00:00:00')
-            socioYaActualizado = vencCheck >= hoyCheck
-          }
+        if (plan.tipo !== 'sesiones' && pendiente.socios.fecha_vencimiento) {
+          var hoyCheck = new Date()
+          hoyCheck.setHours(0, 0, 0, 0)
+          var vencCheck = new Date(pendiente.socios.fecha_vencimiento + 'T00:00:00')
+          socioYaActualizado = vencCheck >= hoyCheck
         }
+        // Para sesiones: siempre actualizamos plan_id/plan_actual (renovar_ciclo ya manejó sesiones)
       }
 
       if (socioYaActualizado) {
@@ -583,16 +600,8 @@ export var confirmarPagoPendiente = async function(gymId, pendienteId, datosConf
         }
 
         if (plan.tipo === 'sesiones') {
-          if (cicloActivo) {
-            // FASE 5: ciclo activo gestiona los contadores — NO resetear sesiones
-          } else {
-            // Sin ciclo activo → comportamiento legacy
-            var sesiones = parseInt(plan.cantidad_sesiones) || 0
-            updateSocio.sesiones_total = sesiones
-            updateSocio.sesiones_usadas = 0
-            updateSocio.sesiones_restantes = sesiones
-            updateSocio.fecha_vencimiento = null
-          }
+          updateSocio.fecha_vencimiento = null
+          // sesiones_total/usadas/restantes sincronizadas por renovar_ciclo o saldar_deuda_ciclo
         } else {
           var nuevaFecha = calcularNuevaFechaVencimiento(plan.duracion_dias)
           updateSocio.sesiones_total = null
